@@ -186,4 +186,12 @@ data/
 *.csv
 *.zip
 *.gz
-*.parquet 
+*.parquet
+
+# Streamlit
+.streamlit/
+
+# Output and temp files
+*.log
+temp_*
+*.tmp 

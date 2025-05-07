@@ -65,17 +65,91 @@ run_local.bat --nrows 100000
 run_local.bat --secure-kaggle
 ```
 
+## Fairness Dashboard (New for 2025)
+
+We've added a comprehensive fairness dashboard to visualize and analyze bias metrics across demographic subgroups:
+
+### Key Features
+
+- **Bias Metrics Visualization**: Interactive heatmaps showing Subgroup AUC, BPSN AUC, and BNSP AUC across all identity groups
+- **Threshold Playground**: Interactive tool to find optimal classification thresholds that minimize bias
+- **Power Mean Analysis**: Aggregation of bias metrics using generalized power means with configurable parameters
+- **Model Comparison**: Compare bias metrics across different model architectures
+- **Exportable Reports**: Save results as CSV files for further analysis
+
+### Running the Fairness Dashboard
+
+```bash
+# Install Streamlit (if not already installed)
+pip install -r app/requirements.txt
+
+# Run the dashboard
+cd app
+streamlit run app.py
+```
+
+### Bias Evaluation Notebook
+
+A Jupyter notebook is provided for detailed bias evaluation:
+
+```bash
+# Run the notebook with a specific model
+cd notebooks
+papermill 03_bias_evaluation.ipynb output.ipynb -p model_name "tfidf_logreg"
+```
+
+### Bias Metrics API
+
+The enhanced metrics module (`src/metrics_v2.py`) provides a vectorized implementation of bias metrics that can be integrated into any Python project:
+
+```python
+import numpy as np
+from src.metrics_v2 import compute_all_metrics
+
+# Example usage
+results = compute_all_metrics(
+    y_true=y_true,               # Ground truth labels
+    y_pred=y_pred,               # Model predictions
+    subgroup_masks=subgroup_masks,  # Dictionary mapping subgroup names to boolean masks
+    power=-5,                    # Power parameter for generalized mean
+    weight_overall=0.25          # Weight for overall AUC in final score
+)
+
+# Access results
+overall_auc = results["overall"]["auc"]
+final_score = results["overall"]["final_score"]
+subgroup_metrics = results["subgroup_metrics"]  # List of per-subgroup metrics
+```
+
+### Fairness Metrics Workflow
+
+1. Train models using standard workflows
+2. Generate predictions on test data
+3. Run `03_bias_evaluation.ipynb` to calculate bias metrics
+4. Launch the Streamlit dashboard to explore results interactively
+
 ## Project Structure
 
 ```
 .
+├── app/                      # Streamlit dashboard application
+│   ├── app.py                # Main dashboard
+│   └── requirements.txt      # Dashboard dependencies
 ├── artifacts/                # Saved model artifacts (vectorizers, models)
 ├── data/                     # Dataset files (downloaded via setup)
 ├── figs/                     # Output figures and visualizations
 ├── logs/                     # Training logs and validation results
 ├── models/                   # Trained model checkpoints
-├── bias_metrics.py           # Metrics for bias evaluation
-├── plot_utils.py             # Visualization utilities
+├── notebooks/                # Jupyter notebooks
+│   └── 03_bias_evaluation.ipynb # Fairness metrics notebook 
+├── results/                  # Evaluation results (metrics, reports)
+├── src/                      # Source code
+│   ├── metrics_v2.py         # Enhanced bias metrics module
+│   └── vis_utils.py          # Visualization utilities
+├── tests/                    # Unit tests
+│   └── test_metrics_v2.py    # Tests for bias metrics
+├── bias_metrics.py           # Original metrics for bias evaluation
+├── plot_utils.py             # Original visualization utilities
 ├── requirements.txt          # Python dependencies
 ├── run_analysis.py           # The main analysis script
 ├── run_local.bat             # Windows runner script
