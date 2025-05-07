@@ -33,8 +33,13 @@ from sklearn.metrics import roc_auc_score
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(".."))
 
-# Import our metrics module
-import src.metrics_v2 as metrics_v2
+# Import metrics_v2 module directly (avoiding src package imports)
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from src.metrics_v2 import (
+    compute_all_metrics,
+    list_identity_columns,
+    BiasReport
+)
 
 # Set up directories
 DATA_DIR = "../data"
@@ -161,7 +166,7 @@ print(f"Overall AUC: {overall_auc:.4f}")
 
 # Calculate comprehensive metrics
 print(f"Calculating bias metrics for {len(identity_cols)} identity subgroups...")
-results = metrics_v2.compute_all_metrics(
+results = compute_all_metrics(
     y_true=y_true,
     y_pred=y_pred,
     subgroup_masks=subgroup_masks,
@@ -210,8 +215,138 @@ if not os.path.exists(pred_file):
 # In[13]:
 
 
-# Import visualization utilities
-from src.vis_utils import plot_auc_heatmap, plot_threshold_sweep
+# Define visualization utilities directly in this notebook
+def plot_auc_heatmap(metrics_file, title="Bias Metrics Heatmap", save_path=None):
+    """Create a heatmap visualization of bias metrics."""
+    # Load metrics
+    df = pd.read_csv(metrics_file)
+    
+    # Sort data by subgroup size
+    df = df.sort_values(by='subgroup_size', ascending=False)
+    
+    # Prepare data for heatmap
+    subgroups = df['subgroup_name'].tolist()
+    metric_columns = ['subgroup_auc', 'bpsn_auc', 'bnsp_auc']
+    
+    # Create heatmap
+    fig = go.Figure(data=go.Heatmap(
+        z=df[metric_columns].values,
+        x=["Subgroup AUC", "BPSN AUC", "BNSP AUC"],
+        y=subgroups,
+        colorscale='RdBu',
+        zmid=0.5,
+        zmin=0.3,
+        zmax=1.0,
+        colorbar=dict(title="AUC Score"),
+        hoverinfo="z+y",
+        text=df[metric_columns].round(4).astype(str).values,
+    ))
+    
+    # Customize layout
+    fig.update_layout(
+        title=title,
+        xaxis=dict(title="Metric Type"),
+        yaxis=dict(title="Identity Subgroup", autorange="reversed"),
+        height=max(400, 30 * len(subgroups)),
+        margin=dict(l=100, r=20, t=70, b=50),
+    )
+    
+    # Save if path provided
+    if save_path:
+        fig.write_image(save_path)
+    
+    return fig
+
+def plot_threshold_sweep(y_true, y_pred, subgroup_mask, subgroup_name, save_path=None):
+    """Create a plot showing impact of different thresholds on a subgroup."""
+    thresholds = np.linspace(0.1, 0.9, 9)
+    
+    # Calculate TPR and FPR at different thresholds
+    background_tpr = []
+    background_fpr = []
+    subgroup_tpr = []
+    subgroup_fpr = []
+    
+    for threshold in thresholds:
+        # Overall
+        y_pred_binary = (y_pred >= threshold).astype(int)
+        overall_tp = np.sum((y_pred_binary == 1) & (y_true == 1))
+        overall_fp = np.sum((y_pred_binary == 1) & (y_true == 0))
+        overall_tn = np.sum((y_pred_binary == 0) & (y_true == 0))
+        overall_fn = np.sum((y_pred_binary == 0) & (y_true == 1))
+        
+        overall_tpr = overall_tp / (overall_tp + overall_fn) if (overall_tp + overall_fn) > 0 else 0
+        overall_fpr = overall_fp / (overall_fp + overall_tn) if (overall_fp + overall_tn) > 0 else 0
+        
+        # Background (not in subgroup)
+        background_pred = y_pred[~subgroup_mask]
+        background_true = y_true[~subgroup_mask]
+        background_pred_binary = (background_pred >= threshold).astype(int)
+        
+        bg_tp = np.sum((background_pred_binary == 1) & (background_true == 1))
+        bg_fp = np.sum((background_pred_binary == 1) & (background_true == 0))
+        bg_tn = np.sum((background_pred_binary == 0) & (background_true == 0))
+        bg_fn = np.sum((background_pred_binary == 0) & (background_true == 1))
+        
+        bg_tpr = bg_tp / (bg_tp + bg_fn) if (bg_tp + bg_fn) > 0 else 0
+        bg_fpr = bg_fp / (bg_fp + bg_tn) if (bg_fp + bg_tn) > 0 else 0
+        
+        background_tpr.append(bg_tpr)
+        background_fpr.append(bg_fpr)
+        
+        # Subgroup
+        subgroup_pred = y_pred[subgroup_mask]
+        subgroup_true = y_true[subgroup_mask]
+        subgroup_pred_binary = (subgroup_pred >= threshold).astype(int)
+        
+        sg_tp = np.sum((subgroup_pred_binary == 1) & (subgroup_true == 1))
+        sg_fp = np.sum((subgroup_pred_binary == 1) & (subgroup_true == 0))
+        sg_tn = np.sum((subgroup_pred_binary == 0) & (subgroup_true == 0))
+        sg_fn = np.sum((subgroup_pred_binary == 0) & (subgroup_true == 1))
+        
+        sg_tpr = sg_tp / (sg_tp + sg_fn) if (sg_tp + sg_fn) > 0 else 0
+        sg_fpr = sg_fp / (sg_fp + sg_tn) if (sg_fp + sg_tn) > 0 else 0
+        
+        subgroup_tpr.append(sg_tpr)
+        subgroup_fpr.append(sg_fpr)
+    
+    # Create figure
+    fig = go.Figure()
+    
+    # Add scatter plots for TPR and FPR
+    fig.add_trace(go.Scatter(
+        x=thresholds, y=background_tpr, mode='lines+markers',
+        name='Background TPR', line=dict(color='blue', dash='solid')
+    ))
+    fig.add_trace(go.Scatter(
+        x=thresholds, y=background_fpr, mode='lines+markers',
+        name='Background FPR', line=dict(color='blue', dash='dash')
+    ))
+    fig.add_trace(go.Scatter(
+        x=thresholds, y=subgroup_tpr, mode='lines+markers',
+        name=f'{subgroup_name} TPR', line=dict(color='red', dash='solid')
+    ))
+    fig.add_trace(go.Scatter(
+        x=thresholds, y=subgroup_fpr, mode='lines+markers',
+        name=f'{subgroup_name} FPR', line=dict(color='red', dash='dash')
+    ))
+    
+    # Update layout
+    fig.update_layout(
+        title=f'Threshold Impact: {subgroup_name} vs Background',
+        xaxis_title='Threshold',
+        yaxis_title='Rate',
+        legend=dict(x=0.01, y=0.99, bgcolor='rgba(255,255,255,0.8)'),
+        width=800,
+        height=500
+    )
+    
+    # Save if path provided
+    if save_path:
+        fig.write_image(save_path)
+    
+    return fig
+
 
 # Create heatmap
 fig = plot_auc_heatmap(

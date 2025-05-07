@@ -2,7 +2,7 @@ import numpy as np
 from sklearn.metrics import roc_auc_score
 import torch
 
-from ..config.base import IDENTITY_COLUMNS
+from config.base import IDENTITY_COLUMNS
 
 
 class JigsawEvaluator:

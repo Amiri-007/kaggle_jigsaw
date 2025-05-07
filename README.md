@@ -88,6 +88,37 @@ cd app
 streamlit run app.py
 ```
 
+## Figures
+
+The project generates a complete set of publication-ready fairness figures for each model:
+
+### Key Fairness Visualizations
+
+- **Identity Prevalence** (`figs/identity_prevalence.png`): Bar plot showing the prevalence of each identity group in the training data
+- **Fairness Heatmap** (`figs/fairness_heatmap_tfidf_lr_full.png`): Heatmap visualizing fairness metrics across demographic groups
+- **Threshold Sweep** (`figs/threshold_sweep_tfidf_lr_full.png`): Analysis of how fairness metrics change with different classification thresholds
+- **ROC Curves**: Model performance visualization with ROC curves for each model
+- **Power Mean Analysis**: Bar plots showing power mean differences across demographic groups
+- **Worst Performers Bar Chart** (`figs/worst_k_bar_tfidf_lr_full.png`): Horizontal bar charts of the worst-performing identity groups by subgroup AUC
+- **Before vs After Comparison**: Scatter plot comparing fairness metrics between baseline and improved models
+- **Error Gap Heatmap** (`figs/error_gap_heatmap_tfidf_lr_full.png`): Heatmap showing FPR and FNR gaps across demographic groups at τ=0.5
+- **Confusion Matrix Mosaic** (`figs/confusion_christian_tfidf_lr_full.png`): Mosaic plot of confusion matrix for specific demographic groups
+- **Threshold Gap Curves** (`figs/threshold_gap_curve_identity_tfidf_lr_full.png`): Plots of FPR/FNR gaps vs threshold for each identity
+
+All fairness analysis uses τ=0.5 as the illustrative decision threshold for binary classification.
+
+### Generating Figures
+
+You can regenerate all figures at once using the provided script:
+
+```bash
+# Convert the Python script to a Jupyter notebook and run it
+jupytext --to notebook notebooks/04_generate_figures.py -o notebooks/tmp_figs.ipynb
+jupyter nbconvert --execute notebooks/tmp_figs.ipynb --to html --output artifacts/figures.html
+```
+
+All figures are saved in the `figs/` directory with a corresponding inventory file (`figs/figure_inventory.json`).
+
 ### Bias Evaluation Notebook
 
 A Jupyter notebook is provided for detailed bias evaluation:

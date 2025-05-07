@@ -6,15 +6,21 @@ on:
     paths:
       - 'src/metrics_v2.py'
       - 'src/vis_utils.py'
+      - 'src/figure_utils.py'
       - 'notebooks/03_bias_evaluation.py'
+      - 'notebooks/04_generate_figures.py'
       - 'tests/test_metrics_v2.py'
+      - 'tests/test_figure_utils.py'
   pull_request:
     branches: [ main, master ]
     paths:
       - 'src/metrics_v2.py'
       - 'src/vis_utils.py'
+      - 'src/figure_utils.py'
       - 'notebooks/03_bias_evaluation.py'
+      - 'notebooks/04_generate_figures.py'
       - 'tests/test_metrics_v2.py'
+      - 'tests/test_figure_utils.py'
 
 jobs:
   test:
@@ -33,12 +39,13 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest matplotlib pandas numpy scikit-learn plotly nbconvert jupyter ipykernel
+        pip install pytest matplotlib pandas numpy scikit-learn plotly nbconvert jupyter ipykernel jupytext
+        pip install seaborn
         pip install -r requirements.txt
     
     - name: Run pytest
       run: |
-        pytest tests/test_metrics_v2.py -v
+        pytest tests/test_metrics_v2.py tests/test_figure_utils.py -v
     
     - name: Convert notebook to executable and run
       run: |
@@ -46,6 +53,8 @@ jobs:
         mkdir -p data
         mkdir -p output/preds
         mkdir -p results
+        mkdir -p figs
+        mkdir -p artifacts
         
         # Create synthetic data for notebook testing
         python -c "
@@ -67,6 +76,7 @@ jobs:
         
         # Save as CSV
         pd.DataFrame(data).to_csv('data/train.csv', index=False)
+        pd.DataFrame(data).to_csv('data/test_public_expanded.csv', index=False)
         
         # Create model predictions
         preds = {
@@ -74,10 +84,45 @@ jobs:
             'prediction': np.clip(np.random.normal(data['target'], 0.3), 0, 1)
         }
         pd.DataFrame(preds).to_csv('output/preds/tfidf_logreg.csv', index=False)
+        
+        # Create metrics files for testing
+        metrics_data = []
+        for identity in ['male', 'female', 'black', 'white', 'muslim', 'christian']:
+            for metric in ['subgroup_auc', 'bpsn_auc', 'bnsp_auc', 'power_diff']:
+                value = np.random.random()
+                metrics_data.append({
+                    'identity_group': identity,
+                    'metric_name': metric,
+                    'value': value
+                })
+        
+        # Save as baseline model metrics
+        pd.DataFrame(metrics_data).to_csv('results/metrics_baseline_tfidf_logreg.csv', index=False)
+        
+        # Save as improved model metrics with slightly different values
+        improved_metrics = pd.DataFrame(metrics_data).copy()
+        improved_metrics['value'] = improved_metrics['value'] * 1.05  # 5% better
+        improved_metrics.to_csv('results/metrics_tfidf_lr_full.csv', index=False)
+        
+        # Save predictions for models
+        pd.DataFrame(preds).to_csv('results/preds_baseline_tfidf_logreg.csv', index=False)
+        improved_preds = pd.DataFrame(preds).copy()
+        improved_preds['prediction'] = np.clip(improved_preds['prediction'] * 1.05, 0, 1)
+        improved_preds.to_csv('results/preds_tfidf_lr_full.csv', index=False)
         "
         
         # Convert Python script to notebook and execute
         jupyter nbconvert --execute --to notebook notebooks/03_bias_evaluation.py
+    
+    - name: Generate static figures
+      run: |
+        jupytext --to notebook notebooks/04_generate_figures.py -o notebooks/tmp_figs.ipynb
+        jupyter nbconvert --execute notebooks/tmp_figs.ipynb --to html --output artifacts/figures.html --ExecutePreprocessor.timeout=900
+    
+    - uses: actions/upload-artifact@v4
+      with:
+        name: figs
+        path: figs/
     
     - name: Upload test artifacts
       uses: actions/upload-artifact@v3
@@ -86,4 +131,5 @@ jobs:
         path: |
           results/
           output/figures/
-          notebooks/03_bias_evaluation.nbconvert.ipynb 
+          notebooks/03_bias_evaluation.nbconvert.ipynb
+          artifacts/figures.html 

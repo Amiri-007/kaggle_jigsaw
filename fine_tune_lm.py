@@ -24,6 +24,10 @@ from src.language_models.models import GPT2ClassificationHeadModel
 from src.language_models.tokenize import MyTokenizer
 from src.language_models.utils import get_optimizer_params, predict
 
+from transformers import BertTokenizer, BertForSequenceClassification, AdamW as BertAdam
+from transformers import GPT2Tokenizer, GPT2Model
+from transformers import AdamW as OpenAIAdam
+
 
 def main():
     parser = ArgumentParser()
@@ -99,16 +103,12 @@ def main():
         AUX_TOXICITY_COLUMNS = OLD_AUX_TOXICITY_COLUMNS
 
     if MODE == 'bert':
-        from pytorch_pretrained_bert import BertTokenizer, BertForSequenceClassification, BertAdam
-
         lm_tokenizer = BertTokenizer.from_pretrained(
             args.lm_model, cache_dir=None, do_lower_case=LOWER_CASE)
         model = BertForSequenceClassification.from_pretrained(
             PRETRAINED_PATH, cache_dir=None, num_labels=1 + len(AUX_TOXICITY_COLUMNS))
         optimizer_class = BertAdam
     else:
-        from pytorch_pretrained_bert import GPT2Tokenizer, OpenAIAdam, GPT2Model
-
         lm_tokenizer = GPT2Tokenizer.from_pretrained(args.lm_model, cache_dir=None)
         model = GPT2ClassificationHeadModel.from_pretrained(PRETRAINED_PATH,
                                                             clf_dropout=config.get('dropout_rate', 0.1),

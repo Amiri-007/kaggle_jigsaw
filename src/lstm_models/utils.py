@@ -6,12 +6,13 @@ import time
 import numpy as np
 import pandas as pd
 import torch
+from torch import nn
 from tqdm import tqdm
 
 from .optim import AdamW
 from ..data import TextDataset, LengthBucketingDataLoader
 from ..metrics import JigsawEvaluator, accuracy
-from ...config.base import IDENTITY_COLUMNS
+from config.base import IDENTITY_COLUMNS
 
 
 def train(model: nn.Module, loss_fn: nn.Module, train_dataset: TextDataset, valid_dataset: TextDataset,
@@ -223,14 +224,14 @@ class EMA(object):
                 param.data = self.shadow[name]
 
     def on_batch_end(self, model):
-        if self.level is 'batch':
+        if self.level == 'batch':
             self.cnt -= 1
             if self.cnt == 0:
                 self._update(model)
                 self.cnt = self.n
 
     def on_epoch_end(self, model):
-        if self.level is 'epoch':
+        if self.level == 'epoch':
             self._update(model)
 
 

@@ -1,4 +1,5 @@
 import random
+from typing import List
 
 import numpy as np
 import torch
@@ -164,7 +165,8 @@ class BucketSampler(Sampler):
 
         if indices is None:
             if self.shuffle:
-                indices = shuffle(np.arange(len(lens), dtype=np.int32))
+                indices = np.arange(len(lens), dtype=np.int32)
+                np.random.shuffle(indices)
                 lens = lens[indices]
             else:
                 indices = np.arange(len(lens), dtype=np.int32)
@@ -195,7 +197,7 @@ class BucketSampler(Sampler):
     
             # shuffling batches within buckets
             if self.shuffle:
-                batches = shuffle(batches)
+                np.random.shuffle(batches)
             for batch in batches:
                 new_indices.extend(batch)
     

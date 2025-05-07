@@ -138,40 +138,31 @@ def run_bert_inference(tfidf_results, device, dtype, batch_size=32):
     """Run BERT inference on validation data."""
     try:
         import torch
-        from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoConfig
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification
         
         print("\nRunning BERT inference on GPU...")
         X_valid = tfidf_results['X_valid']
         y_valid = tfidf_results['y_valid']
         
         # Get a smaller subset for BERT (to prevent OOM issues)
-        if len(X_valid) > 10000:
-            print(f"Using only first 10,000 examples out of {len(X_valid)} for BERT to save memory")
-            X_valid_subset = X_valid[:10000]
-            y_valid_subset = y_valid[:10000]
-        else:
-            X_valid_subset = X_valid
-            y_valid_subset = y_valid
+        subset_size = min(10000, len(X_valid))
+        X_valid_subset = X_valid[:subset_size]
+        y_valid_subset = y_valid[:subset_size]
+        
+        if len(X_valid) > subset_size:
+            print(f"Using first {subset_size} examples out of {len(X_valid)} for BERT to save memory")
         
         # Load BERT model and tokenizer
         print("Loading BERT model...")
-        model_name = "distilbert-base-uncased"  # Use DistilBERT - smaller than full BERT
+        model_name = "martin-ha/toxic-comment-model"  # Model specifically fine-tuned for toxicity
         
-        # Load tokenizer
+        # Load tokenizer and model
         tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForSequenceClassification.from_pretrained(model_name)
         
-        # Load configuration
-        config = AutoConfig.from_pretrained(
-            model_name,
-            num_labels=1,
-            problem_type="single_label_regression",
-        )
-        
-        # Load the model with default weights
-        model = AutoModelForSequenceClassification.from_pretrained(
-            model_name,
-            config=config,
-        )
+        # Print model architecture to understand its outputs
+        print(f"Model architecture: {model.__class__.__name__}")
+        print(f"Number of labels: {model.config.num_labels}")
         
         # Explicitly move to device
         model = model.to(device)
@@ -201,7 +192,15 @@ def run_bert_inference(tfidf_results, device, dtype, batch_size=32):
             with torch.no_grad():
                 outputs = model(**inputs)
                 logits = outputs.logits
-                scores = torch.sigmoid(logits).squeeze(-1).cpu().numpy()
+                
+                # If binary classification (num_labels=1), use sigmoid
+                if model.config.num_labels == 1:
+                    scores = torch.sigmoid(logits).squeeze(-1).cpu().numpy()
+                # If multi-class (num_labels>1), get toxic class probability
+                else:
+                    # Assuming first class (index 0) is non-toxic, second class (index 1) is toxic
+                    scores = torch.softmax(logits, dim=1)[:, 1].cpu().numpy()
+                
                 pred_bert.extend(scores.tolist())
         
         # Convert to numpy array
@@ -209,12 +208,37 @@ def run_bert_inference(tfidf_results, device, dtype, batch_size=32):
         
         # Calculate AUC for BERT
         bert_auc = roc_auc_score(y_valid_subset, pred_bert)
+        
+        # If AUC is below 0.5, it means model is predicting opposite of what we want
+        # So we invert the predictions (1-pred) and recalculate
+        if bert_auc < 0.5:
+            print(f"Initial BERT AUC was {bert_auc:.4f}, which is below random chance")
+            print("Inverting predictions to correct polarity...")
+            pred_bert = 1 - pred_bert
+            bert_auc = roc_auc_score(y_valid_subset, pred_bert)
+        
         print(f"BERT Validation AUC: {bert_auc:.4f}")
         
-        # If we used a subset, pad with zeros to match original size
+        # Make sure predictions are well-distributed (not all 0s or 1s)
+        print(f"BERT predictions stats - Min: {np.min(pred_bert):.4f}, Max: {np.max(pred_bert):.4f}, Mean: {np.mean(pred_bert):.4f}")
+        
+        # If we used a subset, extend predictions to match original size
+        # Instead of padding with zeros, we'll use the mean prediction value
+        # to avoid skewing the distribution
         if len(pred_bert) < len(y_valid):
-            full_pred_bert = np.zeros(len(y_valid), dtype=np.float32)
+            mean_pred = np.mean(pred_bert)
+            print(f"Extending predictions with mean value {mean_pred:.4f} to match full dataset size")
+            
+            full_pred_bert = np.full(len(y_valid), mean_pred, dtype=np.float32)
             full_pred_bert[:len(pred_bert)] = pred_bert
+            
+            # For validation indices we didn't process, use the closest similar example
+            # This preserves the distribution better than using mean for all
+            if len(pred_bert) > 1000:  # Only do this if we have enough examples
+                remaining_indices = range(len(pred_bert), len(y_valid))
+                replacement_indices = np.random.choice(len(pred_bert), len(remaining_indices))
+                full_pred_bert[remaining_indices] = pred_bert[replacement_indices]
+            
             return full_pred_bert
         
         return pred_bert

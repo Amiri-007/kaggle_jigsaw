@@ -6,9 +6,64 @@ This module provides vectorized implementations of bias metrics for evaluating
 model performance across different demographic subgroups.
 """
 
-from typing import Dict, List, Tuple, Union, Optional
+from typing import Dict, List, Tuple, Union, Optional, Set
 import numpy as np
+import pandas as pd
+from dataclasses import dataclass
 from sklearn.metrics import roc_auc_score
+
+
+@dataclass
+class BiasReport:
+    """
+    A structured container for bias metrics results.
+    
+    Attributes:
+        model_name: Name of the evaluated model
+        overall_auc: Overall ROC AUC score across all examples
+        metrics: DataFrame with columns for identity, subgroup_auc, bpsn_auc, 
+                 bnsp_auc, and subgroup_size
+        final_score: Combined score that weights overall performance and bias metrics
+    """
+    model_name: str
+    overall_auc: float
+    metrics: pd.DataFrame
+    final_score: float
+
+
+def list_identity_columns(df: pd.DataFrame) -> List[str]:
+    """
+    Auto-detect identity columns in the dataset.
+    
+    Identity columns are identified as float columns with names matching the
+    Jigsaw dataset specification (e.g., 'male', 'female', 'black', etc.)
+    
+    Args:
+        df: DataFrame containing potential identity columns
+        
+    Returns:
+        List of column names identified as identity columns
+    """
+    # Known identity columns from the Jigsaw dataset
+    known_identities = {
+        'male', 'female', 'transgender', 'other_gender', 'heterosexual', 
+        'homosexual_gay_or_lesbian', 'bisexual', 'other_sexual_orientation',
+        'christian', 'jewish', 'muslim', 'hindu', 'buddhist', 'atheist', 
+        'other_religion', 'black', 'white', 'asian', 'latino', 'other_race_or_ethnicity',
+        'physical_disability', 'intellectual_or_learning_disability', 
+        'psychiatric_or_mental_illness', 'other_disability'
+    }
+    
+    # Find columns that are in the known identities list and are float type
+    identity_cols = [col for col in df.columns 
+                    if col in known_identities and 
+                    pd.api.types.is_float_dtype(df[col])]
+    
+    if not identity_cols:
+        # Fallback to just checking column names if no matches found
+        identity_cols = [col for col in df.columns if col in known_identities]
+    
+    return identity_cols
 
 
 def subgroup_auc(y_true: np.ndarray, y_pred: np.ndarray, 
@@ -24,6 +79,10 @@ def subgroup_auc(y_true: np.ndarray, y_pred: np.ndarray,
     Returns:
         AUC score for the subgroup or np.nan if insufficient samples
     """
+    # Handle edge case: if subgroup is empty, return np.nan
+    if np.sum(subgroup_mask) == 0:
+        return np.nan
+    
     # Skip computation for small subgroups to avoid statistical issues
     if np.sum(subgroup_mask) < 10:
         return np.nan
@@ -51,6 +110,10 @@ def bpsn_auc(y_true: np.ndarray, y_pred: np.ndarray,
     Returns:
         BPSN AUC score or np.nan if insufficient samples
     """
+    # Handle edge case: if subgroup is empty, return np.nan
+    if np.sum(subgroup_mask) == 0:
+        return np.nan
+    
     # BPSN: Background positive (y=1), Subgroup negative (y=0)
     bpsn_mask = ((subgroup_mask) & (y_true == 0)) | ((~subgroup_mask) & (y_true == 1))
     
@@ -80,6 +143,10 @@ def bnsp_auc(y_true: np.ndarray, y_pred: np.ndarray,
     Returns:
         BNSP AUC score or np.nan if insufficient samples
     """
+    # Handle edge case: if subgroup is empty, return np.nan
+    if np.sum(subgroup_mask) == 0:
+        return np.nan
+    
     # BNSP: Background negative (y=0), Subgroup positive (y=1)
     bnsp_mask = ((~subgroup_mask) & (y_true == 0)) | ((subgroup_mask) & (y_true == 1))
     
@@ -93,9 +160,9 @@ def bnsp_auc(y_true: np.ndarray, y_pred: np.ndarray,
         return np.nan
 
 
-def generalised_power_mean(auc_list: List[float], p: float = -5) -> float:
+def generalized_power_mean(auc_list: List[float], p: float = -5) -> float:
     """
-    Calculate the generalized power mean of AUC values.
+    Calculate the generalized power mean of AUC values using np.nanmean.
     
     The power mean (or generalized mean) with exponent p is:
     M_p(x) = (1/n * sum(x_i^p))^(1/p)
@@ -116,9 +183,9 @@ def generalised_power_mean(auc_list: List[float], p: float = -5) -> float:
     if len(valid_aucs) == 0:
         return np.nan
     
-    # Calculate power mean
+    # Calculate power mean using np.nanmean to handle any remaining NaN values
     # Note: For negative p, this emphasizes lower values (worst performer)
-    return np.power(np.mean(np.power(valid_aucs, p)), 1/p)
+    return np.power(np.nanmean(np.power(valid_aucs, p)), 1/p)
 
 
 def final_bias_score(overall_auc: float, 
@@ -144,7 +211,7 @@ def final_bias_score(overall_auc: float,
     # Calculate power means for each bias metric type
     means = {}
     for metric_name, auc_values in bias_auc_dict.items():
-        means[f"power_mean_{metric_name}"] = generalised_power_mean(auc_values, p=power)
+        means[f"power_mean_{metric_name}"] = generalized_power_mean(auc_values, p=power)
     
     # Calculate bias component (average of the three means)
     bias_metrics = [
@@ -152,7 +219,7 @@ def final_bias_score(overall_auc: float,
         means["power_mean_bpsn_auc"], 
         means["power_mean_bnsp_auc"]
     ]
-    bias_score = np.mean([m for m in bias_metrics if not np.isnan(m)])
+    bias_score = np.nanmean([m for m in bias_metrics if not np.isnan(m)])
     
     # Calculate final weighted score
     final_score = weight_overall * overall_auc + (1 - weight_overall) * bias_score
@@ -198,7 +265,7 @@ def compute_bias_metrics_for_subgroup(
         "subgroup_size": int(subgroup_size),
         "subgroup_positive_rate": float(subgroup_pos_rate),
         "subgroup_auc": float(sub_auc),
-        "bpsn_auc": float(bpsn), 
+        "bpsn_auc": float(bpsn),
         "bnsp_auc": float(bnsp)
     }
 
@@ -207,61 +274,55 @@ def compute_all_metrics(
     y_true: np.ndarray,
     y_pred: np.ndarray,
     subgroup_masks: Dict[str, np.ndarray],
+    model_name: str = "unnamed_model",
     power: float = -5,
     weight_overall: float = 0.25
-) -> Dict:
+) -> BiasReport:
     """
-    Compute comprehensive bias metrics across all subgroups.
+    Calculate all bias metrics and final score.
     
     Args:
         y_true: Array of true binary labels
-        y_pred: Array of predicted probabilities  
+        y_pred: Array of predicted probabilities
         subgroup_masks: Dictionary mapping subgroup names to boolean masks
-        power: Power parameter for generalized mean
+        model_name: Name of the model being evaluated
+        power: Power parameter for generalized mean calculation
         weight_overall: Weight for overall AUC in final score
         
     Returns:
-        Dictionary with detailed metrics for model evaluation
+        BiasReport containing all metrics and results
     """
     # Calculate overall AUC
     overall_auc = roc_auc_score(y_true, y_pred)
     
-    # Compute metrics for each subgroup
+    # Calculate individual subgroup metrics
     subgroup_metrics = []
-    subgroup_aucs = []
-    bpsn_aucs = []
-    bnsp_aucs = []
+    bias_auc_dict = {"subgroup_auc": [], "bpsn_auc": [], "bnsp_auc": []}
     
     for subgroup_name, mask in subgroup_masks.items():
-        metrics = compute_bias_metrics_for_subgroup(
-            y_true, y_pred, mask, subgroup_name
-        )
+        metrics = compute_bias_metrics_for_subgroup(y_true, y_pred, mask, subgroup_name)
         subgroup_metrics.append(metrics)
         
-        # Collect AUCs for power mean calculation
-        subgroup_aucs.append(metrics["subgroup_auc"])
-        bpsn_aucs.append(metrics["bpsn_auc"])
-        bnsp_aucs.append(metrics["bnsp_auc"])
+        # Collect AUC values for power mean calculation
+        bias_auc_dict["subgroup_auc"].append(metrics["subgroup_auc"])
+        bias_auc_dict["bpsn_auc"].append(metrics["bpsn_auc"])
+        bias_auc_dict["bnsp_auc"].append(metrics["bnsp_auc"])
     
-    # Calculate final bias score
-    bias_auc_dict = {
-        "subgroup_auc": subgroup_aucs,
-        "bpsn_auc": bpsn_aucs,
-        "bnsp_auc": bnsp_aucs
-    }
-    
+    # Calculate final score
     final_score, detailed_metrics = final_bias_score(
-        overall_auc, bias_auc_dict, power, weight_overall
+        overall_auc, 
+        bias_auc_dict,
+        power=power,
+        weight_overall=weight_overall
     )
     
-    # Combine everything into a complete results dictionary
-    results = {
-        "overall": {
-            "auc": overall_auc,
-            "final_score": final_score,
-        },
-        "subgroup_metrics": subgroup_metrics,
-        "bias_metrics": detailed_metrics
-    }
+    # Create metrics DataFrame
+    metrics_df = pd.DataFrame(subgroup_metrics)
     
-    return results 
+    # Return BiasReport
+    return BiasReport(
+        model_name=model_name,
+        overall_auc=overall_auc,
+        metrics=metrics_df,
+        final_score=final_score
+    ) 

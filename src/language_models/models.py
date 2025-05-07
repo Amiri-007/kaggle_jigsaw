@@ -1,4 +1,4 @@
-from pytorch_pretrained_bert import GPT2Model
+from transformers import GPT2Model
 import torch
 from torch import nn
 

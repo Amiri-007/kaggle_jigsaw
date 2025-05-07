@@ -16,6 +16,24 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from sklearn.metrics import roc_auc_score
 
+# Add parent directory to path to import metrics_v2
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+try:
+    from src.metrics_v2 import list_identity_columns
+except ImportError:
+    # Fallback implementation if module can't be imported
+    def list_identity_columns(df):
+        """Fallback implementation to detect identity columns."""
+        known_identities = {
+            'male', 'female', 'transgender', 'other_gender', 'heterosexual', 
+            'homosexual_gay_or_lesbian', 'bisexual', 'other_sexual_orientation',
+            'christian', 'jewish', 'muslim', 'hindu', 'buddhist', 'atheist', 
+            'other_religion', 'black', 'white', 'asian', 'latino', 'other_race_or_ethnicity',
+            'physical_disability', 'intellectual_or_learning_disability', 
+            'psychiatric_or_mental_illness', 'other_disability'
+        }
+        return [col for col in df.columns if col in known_identities]
+
 # Set page configuration
 st.set_page_config(
     page_title="Jigsaw Bias Audit Dashboard",
@@ -27,6 +45,21 @@ st.set_page_config(
 # Define paths
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "results")
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+
+# Get identity columns from training data
+try:
+    # Use list_identity_columns to detect identity columns from the train data
+    IDENTITY_COLUMNS = list_identity_columns(
+        pd.read_csv(os.path.join(DATA_DIR, "train.csv"), nrows=1)
+    )
+except (FileNotFoundError, ImportError):
+    # Fallback to default identity columns
+    IDENTITY_COLUMNS = [
+        'male', 'female', 'transgender', 'other_gender', 'heterosexual',
+        'homosexual_gay_or_lesbian', 'bisexual', 'other_sexual_orientation',
+        'christian', 'jewish', 'muslim', 'hindu', 'buddhist', 'atheist',
+        'other_religion', 'black', 'white', 'asian', 'latino', 'other_race_or_ethnicity'
+    ]
 
 # Standalone implementation of visualization functions
 def plot_auc_heatmap(metrics_file, title="Bias Metrics Heatmap"):
@@ -241,7 +274,21 @@ def load_model_metrics(model_name):
         st.error(f"Metrics file not found: {metrics_file}")
         return None
     
-    return pd.read_csv(metrics_file)
+    metrics_df = pd.read_csv(metrics_file)
+    
+    # Check if we have the overall metrics
+    overall_metrics_file = os.path.join(RESULTS_DIR, "overall_metrics.csv")
+    if os.path.exists(overall_metrics_file):
+        try:
+            overall_df = pd.read_csv(overall_metrics_file)
+            model_overall = overall_df[overall_df['model_name'] == model_name]
+            if not model_overall.empty:
+                metrics_df.attrs['overall_auc'] = model_overall['overall_auc'].iloc[0]
+                metrics_df.attrs['final_score'] = model_overall['final_score'].iloc[0]
+        except:
+            pass
+    
+    return metrics_df
 
 
 def load_predictions(model_name):
@@ -255,7 +302,7 @@ def load_predictions(model_name):
 
 
 def load_ground_truth():
-    """Load synthetic ground truth data with identity columns."""
+    """Load ground truth data with identity columns."""
     # First try test data (for real evaluation)
     test_file = os.path.join(DATA_DIR, "test_public_expanded.csv")
     if os.path.exists(test_file):
@@ -273,18 +320,18 @@ def load_ground_truth():
     n_samples = 100
     ids = list(range(1, n_samples + 1))
     target = (np.random.random(n_samples) > 0.7).astype(int)
-    identity1 = (np.random.random(n_samples) > 0.5).astype(int)
-    identity2 = (np.random.random(n_samples) > 0.7).astype(int)
-    identity3 = (np.random.random(n_samples) > 0.3).astype(int)
     
-    # Create dataframe
-    return pd.DataFrame({
+    # Create dataframe with identity columns from IDENTITY_COLUMNS
+    data = {
         "id": ids,
-        "target": target,
-        "identity1": identity1,
-        "identity2": identity2,
-        "identity3": identity3
-    })
+        "target": target
+    }
+    
+    # Add identity columns
+    for col in IDENTITY_COLUMNS:
+        data[col] = (np.random.random(n_samples) > 0.7).astype(int)
+    
+    return pd.DataFrame(data)
 
 
 def metrics_explorer_page():
@@ -295,7 +342,7 @@ def metrics_explorer_page():
     model_names = get_available_models()
     if not model_names:
         st.error("No model metrics files found. Please run the bias evaluation script first.")
-        st.code("python run_metrics.py", language="bash")
+        st.code("python train_baseline.py", language="bash")
         return
     
     selected_model = st.sidebar.selectbox(
@@ -309,9 +356,11 @@ def metrics_explorer_page():
     if metrics_df is None:
         return
     
-    # Calculate summary metrics if needed
-    if 'final_score' not in metrics_df.columns:
-        st.warning("Summary metrics not found in the metrics file. Some visualizations may be unavailable.")
+    # Display overall metrics if available
+    if hasattr(metrics_df, 'attrs') and 'overall_auc' in metrics_df.attrs and 'final_score' in metrics_df.attrs:
+        overall_auc = metrics_df.attrs['overall_auc']
+        final_score = metrics_df.attrs['final_score']
+        st.caption(f"Overall AUC: {overall_auc:.4f} | Final Score: {final_score:.4f}")
     
     # Add model name to metrics dataframe for plotting functions
     metrics_df['model_name'] = selected_model
@@ -350,11 +399,11 @@ def metrics_explorer_page():
     # Summary metrics dataframe for the selected model
     summary_metrics = pd.DataFrame({
         'model_name': [selected_model],
-        'power_mean_subgroup_auc': [metrics_df['subgroup_auc'].mean()],
-        'power_mean_bpsn_auc': [metrics_df['bpsn_auc'].mean()],
-        'power_mean_bnsp_auc': [metrics_df['bnsp_auc'].mean()],
-        'overall_auc': [0.75],  # Default value, replace if available
-        'final_score': [0.75]   # Default value, replace if available
+        'power_mean_subgroup_auc': [filtered_metrics['subgroup_auc'].mean()],
+        'power_mean_bpsn_auc': [filtered_metrics['bpsn_auc'].mean()],
+        'power_mean_bnsp_auc': [filtered_metrics['bnsp_auc'].mean()],
+        'overall_auc': [metrics_df.attrs.get('overall_auc', 0.75) if hasattr(metrics_df, 'attrs') else 0.75],  # Default value, replace if available
+        'final_score': [metrics_df.attrs.get('final_score', 0.75) if hasattr(metrics_df, 'attrs') else 0.75]   # Default value, replace if available
     })
     
     fig = plot_power_mean_bars(summary_metrics, selected_model)
@@ -373,7 +422,7 @@ def threshold_playground_page():
     model_names = get_available_models()
     if not model_names:
         st.error("No model predictions found. Please run the bias evaluation script first.")
-        st.code("python run_metrics.py", language="bash")
+        st.code("python train_baseline.py", language="bash")
         return
     
     # Model selection
@@ -402,10 +451,11 @@ def threshold_playground_page():
     # Merge data
     merged_data = pd.merge(ground_truth, predictions, on='id')
     
-    # Get identity columns
-    identity_columns = [col for col in ground_truth.columns 
-                        if col not in ['id', 'comment_text', 'target', 'toxicity', 'severe_toxicity', 
-                                      'obscene', 'threat', 'insult', 'sexual_explicit']]
+    # Get identity columns from the actual data
+    identity_columns = list_identity_columns(ground_truth)
+    if not identity_columns:
+        # Fallback to default IDENTITY_COLUMNS
+        identity_columns = IDENTITY_COLUMNS
     
     if not identity_columns:
         st.error("No identity columns found in the ground truth data.")
