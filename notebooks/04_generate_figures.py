@@ -125,6 +125,11 @@ for metrics_file in metrics_files:
         print(f"Error loading metrics file {metrics_file}: {e}")
         continue
     
+    # Check if this is a dry-run (all subgroup_auc values are NaN)
+    if 'subgroup_auc' in metrics_df.columns and metrics_df['subgroup_auc'].isna().all():
+        print(f"Dry-run detected: skipping figure generation for model {model_name}")
+        continue
+    
     # Check if the metrics file has the expected structure
     required_columns = ['identity_group', 'metric_name', 'value']
     if not all(col in metrics_df.columns for col in required_columns):

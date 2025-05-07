@@ -47,6 +47,8 @@ warmup_ratio: 0.1
 max_grad_norm: 1.0
 apply_downsampling: True
 apply_weights: True
+annotator_weight: True
+pseudo_label_csv: null
 num_workers: 4
 
 # Output configuration

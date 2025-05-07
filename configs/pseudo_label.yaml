@@ -1,0 +1,19 @@
+# Pseudo-labeling configuration
+input_csv: data/train.csv
+unlabeled_csv: data/train.csv  # In real use, this could be a separate unlabeled dataset
+output_csv: output/pseudo_labels.csv
+prediction_threshold: 0.9
+
+# Models to use for pseudo-labeling
+models:
+  - name: bert_headtail
+    config: configs/bert_headtail.yaml
+    checkpoint: output/bert_headtail_fold0.pth
+
+  - name: lstm_caps
+    config: configs/lstm_caps.yaml
+    checkpoint: output/lstm_caps_fold0.pth
+
+# Pseudo-label merging settings
+merge_strategy: majority_vote  # Options: ensemble_avg, majority_vote
+min_confidence: 0.9 

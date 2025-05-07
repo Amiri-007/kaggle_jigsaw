@@ -33,12 +33,30 @@ python -m src.train --model bert_headtail
 # Run quick training test
 python -m src.train --model bert_headtail --dry_run
 
+# Full training with pseudo-labels + annotator weighting
+python -m src.train --model bert_headtail --config configs/bert_headtail.yaml
+
+# Generate pseudo-labels from trained model
+python scripts/pseudo_label.py --base-model output/bert_headtail_fold0.pth --unlabeled-csv data/train.csv --out-csv output/pseudo_bert.csv
+
+# Train with pseudo-labels (model improvement cycle)
+python -m src.train --model bert_headtail --config configs/bert_headtail.yaml --pseudo-label-csv output/pseudo_bert.csv
+
 # Generate predictions on test data
 python -m src.predict --checkpoint_path output/bert_headtail_fold0.pth --test_file data/test_public_expanded.csv
 
 # Generate fairness metrics and visualizations
 python scripts/write_metrics.py --predictions output/preds/bert_headtail.csv
 make figures
+```
+
+## Optional: Pre-Fine-Tuning on Old Data
+
+This step is optional but can improve model performance (requires ~2h on an A100 GPU):
+
+```bash
+# Pre-finetune BERT on 2018 Jigsaw Toxic Comment dataset
+python scripts/pre_finetune_old.py --model_name bert-base-uncased --mode classification --num_epochs 1
 ```
 
 ## Makefile Commands
@@ -67,6 +85,8 @@ make blend GROUND_TRUTH=data/valid.csv
   - BERT with head-tail architecture (processes first and last 128 tokens)
   - GPT-2 with head-tail architecture
 - Advanced negative downsampling and weighted training
+- Pseudo-labeling for semi-supervised learning
+- Annotator count weighting to prioritize higher consensus examples
 - Comprehensive fairness evaluation framework
 - Interactive visualization dashboard for fairness metrics
 - Optimal model blending with Optuna
@@ -144,13 +164,32 @@ Per-sample weights are calculated using:
 w = 1
 w += 3 * identity_sum
 w += 8 * target
+w += 2 * log(toxicity_annotator_count + 2)  # Weights examples with higher annotator agreement
 w /= w.max()
 ```
 
 This prioritizes:
 1. Examples with identity mentions
 2. Toxic examples
-3. While maintaining balanced training
+3. Examples with higher annotator agreement (higher confidence label)
+4. While maintaining balanced training
+
+## Pseudo-Labeling
+
+The project implements a pseudo-labeling technique to leverage unlabeled data:
+
+1. Train a base model on the labeled dataset
+2. Use the base model to predict on unlabeled data (or training data for self-training)
+3. Keep only high-confidence predictions (above 0.9 or below 0.1)
+4. Add these examples with their predicted "pseudo-labels" to the training set
+5. Retrain the model on the combined dataset
+
+Benefits:
+- Increases effective training data size
+- Helps models learn from high-confidence examples
+- Improves generalization, especially for underrepresented classes
+
+The process can be repeated iteratively to further improve model performance, a common technique in semi-supervised learning.
 
 ## Fairness Evaluation
 

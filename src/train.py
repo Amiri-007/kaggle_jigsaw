@@ -55,8 +55,28 @@ def load_config(model_name: str) -> Dict[str, Any]:
     
     return config
 
-def load_data(config: Dict[str, Any]) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Load training and validation data"""
+def load_pseudo_labels(path: str) -> pd.DataFrame:
+    """Load pseudo-labeled data from CSV file"""
+    if not os.path.exists(path):
+        logger.error(f"Pseudo-label file not found: {path}")
+        raise FileNotFoundError(f"Pseudo-label file not found: {path}")
+    
+    pseudo_df = pd.read_csv(path)
+    logger.info(f"Loaded pseudo-labeled data: {pseudo_df.shape}")
+    
+    # Ensure required columns exist
+    required_cols = ["id", "comment_text", "pseudo_target"]
+    for col in required_cols:
+        if col not in pseudo_df.columns:
+            raise ValueError(f"Pseudo-label file missing required column: {col}")
+    
+    # Rename pseudo_target to target for consistency
+    pseudo_df = pseudo_df.rename(columns={"pseudo_target": "target"})
+    
+    return pseudo_df
+
+def load_data(config: Dict[str, Any], pseudo_label_path: Optional[str] = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Load training and validation data, optionally adding pseudo-labeled data"""
     train_path = os.path.join(config['data_dir'], config['train_file'])
     valid_path = os.path.join(config['data_dir'], config['valid_file'])
     
@@ -74,6 +94,24 @@ def load_data(config: Dict[str, Any]) -> Tuple[pd.DataFrame, pd.DataFrame]:
     
     logger.info(f"Loaded training data: {train_df.shape}")
     logger.info(f"Loaded validation data: {valid_df.shape}")
+    
+    # Add pseudo-labeled data if provided
+    if pseudo_label_path is not None:
+        try:
+            pseudo_df = load_pseudo_labels(pseudo_label_path)
+            
+            # Ensure no ID collisions by adding prefix to pseudo-label IDs
+            if "id" in pseudo_df.columns and "id" in train_df.columns:
+                pseudo_df["id"] = "pseudo_" + pseudo_df["id"].astype(str)
+            
+            # Concatenate with original training data
+            original_count = len(train_df)
+            train_df = pd.concat([train_df, pseudo_df], ignore_index=True)
+            
+            logger.info(f"Added {len(pseudo_df)} pseudo-labeled examples to training data")
+            logger.info(f"New training data size: {len(train_df)} (original: {original_count})")
+        except Exception as e:
+            logger.warning(f"Failed to load pseudo-labeled data: {e}")
     
     return train_df, valid_df
 
@@ -372,7 +410,7 @@ def save_checkpoint(
     
     return checkpoint_path
 
-def train(config: Dict[str, Any]) -> str:
+def train(config: Dict[str, Any], pseudo_label_path: Optional[str] = None) -> str:
     """Main training function"""
     # Set random seed
     set_seed(config.get('seed', 42))
@@ -382,11 +420,15 @@ def train(config: Dict[str, Any]) -> str:
     logger.info(f"Using device: {device}")
     
     # Load data
-    train_df, valid_df = load_data(config)
+    train_df, valid_df = load_data(config, pseudo_label_path)
     
     # Create model and tokenizer
     model, tokenizer = create_model_and_tokenizer(config)
     model = model.to(device)
+    
+    # Apply annotator weight if specified
+    apply_annotator_weight = config.get('annotator_weight', False)
+    logger.info(f"Annotator weight enabled: {apply_annotator_weight}")
     
     # Create dataloaders
     train_loader, valid_loader, sample_weights = create_dataloaders(
@@ -400,6 +442,7 @@ def train(config: Dict[str, Any]) -> str:
         identity_cols=config.get('identity_cols'),
         apply_downsampling=config.get('apply_downsampling', True),
         apply_weights=config.get('apply_weights', True),
+        annotator_weight=apply_annotator_weight,
         num_workers=config.get('num_workers', 4),
         first_epoch=True,
         random_state=config.get('seed', 42)
@@ -506,6 +549,8 @@ def main():
                         help="Run a small training loop (2 batches) for testing, skip saving checkpoint")
     parser.add_argument('--seed', type=int, default=42,
                         help="Random seed for reproducibility")
+    parser.add_argument('--pseudo-label-csv', type=str, default=None,
+                        help="Path to CSV file containing pseudo-labeled data")
     args = parser.parse_args()
     
     # Load configuration
@@ -534,7 +579,7 @@ def main():
     
     # Train model
     try:
-        best_checkpoint_path = train(config)
+        best_checkpoint_path = train(config, args.pseudo_label_csv)
         logger.info(f"Training complete. Best checkpoint: {best_checkpoint_path}")
     except Exception as e:
         logger.error(f"Error during training: {e}")

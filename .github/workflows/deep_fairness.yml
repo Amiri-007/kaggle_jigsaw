@@ -30,6 +30,14 @@ jobs:
       run: |
         python -m src.train --model bert_headtail --dry_run
         
+    - name: Pseudo-label dry-run
+      run: |
+        python scripts/pseudo_label.py --base-model bert_headtail --unlabeled-csv data/train.csv --out-csv /tmp/pseudo.csv --dry-run
+        
+    - name: Dry run training with pseudo-labels
+      run: |
+        python -m src.train --model bert_headtail --pseudo-label-csv /tmp/pseudo.csv --dry_run
+        
     - name: Dry run prediction
       run: |
         python -m src.predict --model bert_headtail --dry_run

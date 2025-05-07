@@ -127,6 +127,28 @@ def write_metrics(df, model_name):
         output_path = output_dir / f"metrics_{model_name}.csv"
         metrics_df.to_csv(output_path, index=False)
         
+        # Get overall AUC
+        overall_auc = metrics_df.loc[metrics_df['subgroup'] == 'overall', 'subgroup_auc'].iloc[0]
+        
+        # Find worst performing subgroup
+        subgroup_metrics = metrics_df[metrics_df['subgroup'] != 'overall']
+        worst_subgroup = subgroup_metrics.loc[subgroup_metrics['subgroup_auc'].idxmin()]
+        worst_sub_name = worst_subgroup['subgroup']
+        worst_sub_auc = worst_subgroup['subgroup_auc']
+        
+        # Append a summary line to summary.tsv
+        summary_path = output_dir / 'summary.tsv'
+        summary_exists = summary_path.exists()
+        
+        with open(summary_path, 'a') as f:
+            # Write header if file doesn't exist
+            if not summary_exists:
+                f.write("model_name\toverall_auc\tfinal_score\tworst_subgroup\tworst_sub_auc\n")
+            
+            # Write summary line
+            f.write(f"{model_name}\t{overall_auc:.6f}\t{score:.6f}\t{worst_sub_name}\t{worst_sub_auc:.6f}\n")
+        
+        print(f"Summary added to {summary_path}")
         print(f"Metrics written to {output_path}")
         return output_path
         
