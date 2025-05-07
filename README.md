@@ -1,276 +1,190 @@
-# Jigsaw Unintended Bias Audit
+# RDS Project: Deep Fairness for Toxicity Classification
 
-This project analyzes the [Jigsaw Unintended Bias in Toxicity Classification](https://www.kaggle.com/c/jigsaw-unintended-bias-in-toxicity-classification) dataset to evaluate potential biases in machine learning models across demographic groups.
+This project provides a modern implementation for toxicity classification with deep learning models, focusing on bias reduction and fairness evaluation across demographic groups. It builds upon the [Jigsaw Unintended Bias in Toxicity Classification](https://www.kaggle.com/c/jigsaw-unintended-bias-in-toxicity-classification) dataset to evaluate potential biases in machine learning models across demographic groups.
 
-## Optimized for RTX 3070Ti GPU & Windows
+## Installation
 
-This project is specifically optimized to run on:
-- NVIDIA RTX 3070Ti GPU (laptop or desktop)
-- Windows 10/11
-- Python 3.10+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/rds-project.git
+cd rds-project
 
-## Features
+# Create virtual environment
+python -m venv .venv
 
-- Analyzes bias in toxicity classification models across 13 demographic groups
-- Provides comprehensive metrics: Subgroup AUC, BPSN, BNSP, and Power Difference
-- Calculates optimal classification thresholds that minimize bias
-- Includes detailed visualizations to help understand model biases
-- Supports both TF-IDF+LogReg and BERT models
-- GPU-optimized for fast computation
+# Activate environment (Windows)
+.\.venv\Scripts\activate
+# OR Activate environment (Linux/Mac)
+# source .venv/bin/activate
 
-## Secure Setup
+# Install dependencies
+pip install -r requirements.txt
 
-This project uses Kaggle API credentials but handles them securely:
-
-1. **Never commits API keys to GitHub**
-2. Supports multiple secure methods for providing credentials:
-   - Environment variables (`KAGGLE_USERNAME` and `KAGGLE_KEY`)
-   - Interactive setup through a secure helper script
-   - Local configuration file (automatically gitignored)
+# Download data from Kaggle
+# Place in data/ directory
+```
 
 ## Quick Start
 
-### 1. Clone the repository
+```bash
+# Train a model (BERT Head-Tail)
+python -m src.train --model bert_headtail
+
+# Run quick training test
+python -m src.train --model bert_headtail --dry_run
+
+# Generate predictions on test data
+python -m src.predict --checkpoint_path output/bert_headtail_fold0.pth --test_file data/test_public_expanded.csv
+
+# Generate fairness metrics and visualizations
+python scripts/write_metrics.py --predictions output/preds/bert_headtail.csv
+make figures
+```
+
+## Makefile Commands
 
 ```bash
-git clone https://github.com/Amiri-007/kaggle_jigsaw.git
-cd kaggle_jigsaw
+# Show help
+make help
+
+# Train a model
+make train
+
+# Generate predictions
+make predict CHECKPOINT=output/bert_headtail_fold0.pth
+
+# Generate fairness figures
+make figures
+
+# Blend multiple model predictions
+make blend GROUND_TRUTH=data/valid.csv
 ```
 
-### 2. Set up with the automated script
+## Features
 
-```bash
-setup.bat
-```
-
-The setup script will:
-- Create a Python virtual environment
-- Install the required dependencies
-- Prompt for Kaggle API credentials (if not found)
-- Download the dataset
-
-### 3. Run the analysis
-
-```bash
-# Basic usage (TF-IDF + BERT models with GPU)
-run_local.bat
-
-# Skip BERT inference (much faster, only TF-IDF model)
-run_local.bat --skip-bert
-
-# Use more/less data
-run_local.bat --nrows 100000
-
-# Set up secure Kaggle credentials if not already configured
-run_local.bat --secure-kaggle
-```
-
-## Fairness Dashboard (New for 2025)
-
-We've added a comprehensive fairness dashboard to visualize and analyze bias metrics across demographic subgroups:
-
-### Key Features
-
-- **Bias Metrics Visualization**: Interactive heatmaps showing Subgroup AUC, BPSN AUC, and BNSP AUC across all identity groups
-- **Threshold Playground**: Interactive tool to find optimal classification thresholds that minimize bias
-- **Power Mean Analysis**: Aggregation of bias metrics using generalized power means with configurable parameters
-- **Model Comparison**: Compare bias metrics across different model architectures
-- **Exportable Reports**: Save results as CSV files for further analysis
-
-### Running the Fairness Dashboard
-
-```bash
-# Install Streamlit (if not already installed)
-pip install -r app/requirements.txt
-
-# Run the dashboard
-cd app
-streamlit run app.py
-```
-
-## Figures
-
-The project generates a complete set of publication-ready fairness figures for each model:
-
-### Key Fairness Visualizations
-
-- **Identity Prevalence** (`figs/identity_prevalence.png`): Bar plot showing the prevalence of each identity group in the training data
-- **Fairness Heatmap** (`figs/fairness_heatmap_tfidf_lr_full.png`): Heatmap visualizing fairness metrics across demographic groups
-- **Threshold Sweep** (`figs/threshold_sweep_tfidf_lr_full.png`): Analysis of how fairness metrics change with different classification thresholds
-- **ROC Curves**: Model performance visualization with ROC curves for each model
-- **Power Mean Analysis**: Bar plots showing power mean differences across demographic groups
-- **Worst Performers Bar Chart** (`figs/worst_k_bar_tfidf_lr_full.png`): Horizontal bar charts of the worst-performing identity groups by subgroup AUC
-- **Before vs After Comparison**: Scatter plot comparing fairness metrics between baseline and improved models
-- **Error Gap Heatmap** (`figs/error_gap_heatmap_tfidf_lr_full.png`): Heatmap showing FPR and FNR gaps across demographic groups at τ=0.5
-- **Confusion Matrix Mosaic** (`figs/confusion_christian_tfidf_lr_full.png`): Mosaic plot of confusion matrix for specific demographic groups
-- **Threshold Gap Curves** (`figs/threshold_gap_curve_identity_tfidf_lr_full.png`): Plots of FPR/FNR gaps vs threshold for each identity
-
-All fairness analysis uses τ=0.5 as the illustrative decision threshold for binary classification.
-
-### Generating Figures
-
-You can regenerate all figures at once using the provided script:
-
-```bash
-# Convert the Python script to a Jupyter notebook and run it
-jupytext --to notebook notebooks/04_generate_figures.py -o notebooks/tmp_figs.ipynb
-jupyter nbconvert --execute notebooks/tmp_figs.ipynb --to html --output artifacts/figures.html
-```
-
-All figures are saved in the `figs/` directory with a corresponding inventory file (`figs/figure_inventory.json`).
-
-### Bias Evaluation Notebook
-
-A Jupyter notebook is provided for detailed bias evaluation:
-
-```bash
-# Run the notebook with a specific model
-cd notebooks
-papermill 03_bias_evaluation.ipynb output.ipynb -p model_name "tfidf_logreg"
-```
-
-### Bias Metrics API
-
-The enhanced metrics module (`src/metrics_v2.py`) provides a vectorized implementation of bias metrics that can be integrated into any Python project:
-
-```python
-import numpy as np
-from src.metrics_v2 import compute_all_metrics
-
-# Example usage
-results = compute_all_metrics(
-    y_true=y_true,               # Ground truth labels
-    y_pred=y_pred,               # Model predictions
-    subgroup_masks=subgroup_masks,  # Dictionary mapping subgroup names to boolean masks
-    power=-5,                    # Power parameter for generalized mean
-    weight_overall=0.25          # Weight for overall AUC in final score
-)
-
-# Access results
-overall_auc = results["overall"]["auc"]
-final_score = results["overall"]["final_score"]
-subgroup_metrics = results["subgroup_metrics"]  # List of per-subgroup metrics
-```
-
-### Fairness Metrics Workflow
-
-1. Train models using standard workflows
-2. Generate predictions on test data
-3. Run `03_bias_evaluation.ipynb` to calculate bias metrics
-4. Launch the Streamlit dashboard to explore results interactively
+- State-of-the-art deep learning models for toxicity classification:
+  - LSTM-Capsule with EMA (Exponential Moving Average)
+  - BERT with head-tail architecture (processes first and last 128 tokens)
+  - GPT-2 with head-tail architecture
+- Advanced negative downsampling and weighted training
+- Comprehensive fairness evaluation framework
+- Interactive visualization dashboard for fairness metrics
+- Optimal model blending with Optuna
 
 ## Project Structure
 
 ```
 .
-├── app/                      # Streamlit dashboard application
-│   ├── app.py                # Main dashboard
-│   └── requirements.txt      # Dashboard dependencies
-├── artifacts/                # Saved model artifacts (vectorizers, models)
-├── data/                     # Dataset files (downloaded via setup)
-├── figs/                     # Output figures and visualizations
-├── logs/                     # Training logs and validation results
-├── models/                   # Trained model checkpoints
-├── notebooks/                # Jupyter notebooks
-│   └── 03_bias_evaluation.ipynb # Fairness metrics notebook 
-├── results/                  # Evaluation results (metrics, reports)
-├── src/                      # Source code
-│   ├── metrics_v2.py         # Enhanced bias metrics module
-│   └── vis_utils.py          # Visualization utilities
-├── tests/                    # Unit tests
-│   └── test_metrics_v2.py    # Tests for bias metrics
-├── bias_metrics.py           # Original metrics for bias evaluation
-├── plot_utils.py             # Original visualization utilities
-├── requirements.txt          # Python dependencies
-├── run_analysis.py           # The main analysis script
-├── run_local.bat             # Windows runner script
-├── secure_kaggle.py          # Secure handling of Kaggle credentials
-├── setup_environment.py      # Environment setup script
-├── setup.bat                 # Windows setup script
-└── Jigsaw_Unintended_Bias_Audit.ipynb # Main notebook (optional)
+├── configs/                 # Model configuration files
+├── data/                    # Dataset files (download from Kaggle)
+├── fairness/                # Fairness evaluation framework
+├── figs/                    # Output figures and visualizations
+├── legacy/                  # Legacy code (for reference)
+├── notebooks/               # Jupyter notebooks
+├── output/                  # Model outputs (checkpoints, predictions)
+│   └── preds/               # Model predictions
+├── results/                 # Evaluation results (metrics, reports)
+├── scripts/                 # Utility scripts
+│   └── write_metrics.py     # Generate fairness metrics
+├── src/                     # Source code
+│   ├── data/                # Data loading and processing
+│   ├── models/              # Model implementations
+│   │   ├── lstm_caps.py     # LSTM-Capsule model
+│   │   ├── bert_headtail.py # BERT head-tail model
+│   │   └── gpt2_headtail.py # GPT-2 head-tail model
+│   ├── train.py             # Training script
+│   ├── predict.py           # Prediction script
+│   └── blend_optuna.py      # Model blending optimization
+└── tests/                   # Unit tests
 ```
 
-## Secure Credential Handling
+## Models
 
-This project offers multiple options for handling Kaggle API credentials securely:
+The project implements three deep learning models:
 
-### Option 1: Environment Variables
+### 1. LSTM-Capsule
 
-Set `KAGGLE_USERNAME` and `KAGGLE_KEY` as environment variables:
+- PyTorch implementation with nn.Embedding using GloVe embeddings
+- Bidirectional LSTM encoder
+- Primary Capsule layer with dimension=8
+- Self-attention mechanism
+- Exponential Moving Average (EMA) with decay=0.999
+
+### 2. BERT Head-Tail
+
+- Processes both the head (first 128 tokens) and tail (last 128 tokens) of the input
+- Concatenates the [CLS] representations from both head and tail
+- Uses HuggingFace Transformers library
+- Linear warmup and decay learning rate schedule
+
+### 3. GPT-2 Head-Tail
+
+- Similar architecture to BERT Head-Tail but using GPT-2 as the base model
+- Optimized for toxicity classification tasks
+
+## Handling Long Sequences
+
+Both BERT and GPT-2 models use a head-tail architecture to handle long sequences:
+- First 128 tokens capture the beginning context
+- Last 128 tokens capture the conclusion/resolution
+- Two separate encodings are processed and then combined
+- Helps capture context from both parts of long comments
+
+## Data Sampling Strategy
+
+The models use a sophisticated sampling strategy to address class imbalance:
+
+- **Epoch 1**: Drop 50% of rows where target < 0.2 AND identity_columns.sum() == 0
+- **Epoch 2+**: Restore half of the dropped examples
+
+## Sample Weighting
+
+Per-sample weights are calculated using:
+```
+w = 1
+w += 3 * identity_sum
+w += 8 * target
+w /= w.max()
+```
+
+This prioritizes:
+1. Examples with identity mentions
+2. Toxic examples
+3. While maintaining balanced training
+
+## Fairness Evaluation
+
+The project includes comprehensive fairness evaluation:
+
+- Subgroup AUC across demographic groups
+- BPSN (Background Positive, Subgroup Negative) AUC
+- BNSP (Background Negative, Subgroup Positive) AUC
+- Error rate metrics (FPR/FNR) at τ=0.5 threshold
+- Threshold gap visualization
+
+## Model Blending
+
+Optimal weights for model blending are found using Optuna:
 
 ```bash
-# Windows (PowerShell)
-$env:KAGGLE_USERNAME = "yourusername"
-$env:KAGGLE_KEY = "yourapikey"
-
-# Windows (CMD)
-set KAGGLE_USERNAME=yourusername
-set KAGGLE_KEY=yourapikey
+python -m src.blend_optuna --ground_truth data/valid.csv
 ```
 
-### Option 2: Interactive Setup
+This optimizes for the fairness metric rather than just classification accuracy.
 
-Use the secure helper script to set up credentials interactively:
+## Continuous Integration
 
-```bash
-python secure_kaggle.py --setup
-```
-
-### Option 3: Manual Setup
-
-1. Create a `.kaggle` directory in your home folder
-2. Place your `kaggle.json` file there with proper permissions
-
-## Running on GitHub
-
-When running on GitHub (or any CI/CD environment):
-
-1. Add `KAGGLE_USERNAME` and `KAGGLE_KEY` as repository secrets
-2. Reference these secrets in your GitHub Actions workflow
-3. The scripts will automatically detect and use them
-
-## Results
-
-The analysis will generate:
-
-1. **Artifacts**: Trained models and vectorizers
-2. **Visualizations**: Various plots showing bias metrics
-3. **Reports**: Summary of bias metrics for each model
+GitHub Actions workflow tests:
+- Training (dry run with 5 mini-batches)
+- Unit tests
+- Figure generation
 
 ## License
 
 MIT License
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
 ## References
 
 - [Jigsaw Unintended Bias in Toxicity Classification](https://www.kaggle.com/c/jigsaw-unintended-bias-in-toxicity-classification)
-- [Conversation AI Research](https://conversationai.github.io/)
-
----
-
-## Original Repository Information
-
-This repository is based on the 3rd place solution by F.H.S.D.Y. of the Jigsaw Unintended Bias in Toxicity Classification competition.
-
-Please see https://www.kaggle.com/c/jigsaw-unintended-bias-in-toxicity-classification/discussion/97471#latest-582610 for more information.
-
-### Original Requirements
-
-```
-apex
-attrdict==2.0.1
-nltk==3.4.4
-numpy==1.16.4
-optuna==0.13.0
-pandas==0.24.2
-pytorch-pretrained-bert==0.6.2
-scikit-learn==0.21.2
-torch==1.1.0
-tqdm==4.32.1
-```
-
-Please refer to the original README for more information on configuration and execution of the original models.
+- [Perspective API](https://perspectiveapi.com/)
+- [Kaggle 3rd Place Solution](https://medium.com/@yanpanlau/jigsaw-unintended-bias-in-toxicity-classification-top-3-solution-a1309ff8fc53)

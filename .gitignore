@@ -194,4 +194,39 @@ data/
 # Output and temp files
 *.log
 temp_*
-*.tmp 
+*.tmp
+
+# VSCode
+.vscode/
+
+# PyCharm
+.idea/
+
+# Model outputs
+output/*/
+output/preds/
+output/*.pth
+models/
+
+# Datasets
+data/*
+!data/.gitkeep
+
+# Results and figures
+results/
+figs/
+
+# Logs
+logs/
+*.log
+
+# Embeddings
+*.vec
+*.bin
+*.txt
+*.gz
+*.zip
+
+# OS specific
+.DS_Store
+Thumbs.db 
