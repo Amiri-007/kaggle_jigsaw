@@ -1,7 +1,8 @@
 import pandas as pd
 import numpy as np
 import pytest
-from src.data.sampling import apply_negative_downsampling, get_sample_weights, list_identity_columns
+from src.data.sampling import apply_negative_downsampling, get_sample_weights
+from src.data.utils import list_identity_columns
 
 def test_list_identity_columns():
     """Test that list_identity_columns returns the expected columns"""

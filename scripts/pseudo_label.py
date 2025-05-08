@@ -66,11 +66,14 @@ def generate_pseudo_labels(base_model, unlabeled_df, pred_thresh=0.9):
 def main():
     args = parse_args()
     
-    # In dry-run mode, just return an empty DataFrame
+    # Ensure the output directory exists
+    os.makedirs(os.path.dirname(args.out_csv), exist_ok=True)
+    
+    # In dry-run mode, just create an empty CSV with header
     if args.dry_run:
-        print("Dry run mode: returning empty pseudo-label CSV")
+        print("Dry run mode: creating empty pseudo-label CSV with header only")
+        # Create empty DataFrame with just the header
         pseudo_df = pd.DataFrame(columns=["id", "comment_text", "pseudo_target"])
-        os.makedirs(os.path.dirname(args.out_csv), exist_ok=True)
         pseudo_df.to_csv(args.out_csv, index=False)
         return
     
@@ -90,7 +93,6 @@ def main():
     )
     
     # Save pseudo-labeled data
-    os.makedirs(os.path.dirname(args.out_csv), exist_ok=True)
     pseudo_df.to_csv(args.out_csv, index=False)
     print(f"Saved pseudo-labels to {args.out_csv}")
 

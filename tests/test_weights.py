@@ -1,7 +1,8 @@
 import pandas as pd
 import numpy as np
 import pytest
-from src.data.sampling import get_sample_weights, list_identity_columns
+from src.data.sampling import get_sample_weights
+from src.data.utils import list_identity_columns
 
 def test_annotator_count_weight():
     """Test that the annotator count weight is applied correctly"""

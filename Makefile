@@ -1,4 +1,4 @@
-.PHONY: train predict figures figures-fast help blend test clean setup
+.PHONY: train predict figures figures-fast help blend test clean setup full-run
 
 help:
 	@echo "Available targets:"
@@ -11,6 +11,7 @@ help:
 	@echo "  blend       - Blend multiple model predictions"
 	@echo "  test        - Run tests"
 	@echo "  clean       - Clean output directories"
+	@echo "  full-run    - Run a full end-to-end run"
 
 setup:
 	pip install -r requirements.txt
@@ -56,4 +57,15 @@ clean:
 	rm -rf results/
 	rm -rf __pycache__/
 	rm -rf src/__pycache__/
-	find . -name "*.pyc" -delete 
+	find . -name "*.pyc" -delete
+
+full-run: ## single command end-to-end
+	$(MAKE) clean
+	python -m src.train --model bert_headtail --config configs/bert_headtail.yaml --epochs 2 --save-checkpoint $(ARGS)
+	python scripts/pseudo_label.py --base-model output/checkpoints/bert_headtail_fold0.pth --unlabeled-csv data/train.csv --out-csv output/pseudo_bert.csv
+	python -m src.train --model lstm_caps --config configs/lstm_caps.yaml --epochs 6 $(ARGS)
+	python -m src.train --model gpt2_headtail --config configs/gpt2_headtail.yaml --epochs 2 $(ARGS)
+	python -m src.blend_optuna --pred-dir output/preds --ground-truth data/valid.csv --n-trials 200 --out-csv output/preds/blend_ensemble.csv
+	python scripts/write_metrics.py --predictions output/preds/blend_ensemble.csv --model-name blend_ensemble
+	$(MAKE) figures
+	python scripts/run_explainers.py --model-path output/checkpoints/bert_headtail_fold0.pth --n-samples 500 

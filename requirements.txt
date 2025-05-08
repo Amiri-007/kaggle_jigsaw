@@ -1,4 +1,4 @@
-torch>=2.2,<2.3
+torch==2.2.2+cpu --index-url https://download.pytorch.org/whl/cpu
 transformers>=4.40
 sentencepiece
 accelerate
@@ -15,4 +15,6 @@ jupytext
 nbconvert
 statsmodels
 pyyaml
-jupyter 
+jupyter
+shap
+lime 

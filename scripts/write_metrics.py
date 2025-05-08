@@ -13,6 +13,7 @@ from pathlib import Path
 
 # Import fairness metrics
 from fairness import BiasReport, final_score
+from src.data.utils import list_identity_columns
 
 def load_data(predictions_path, ground_truth_path=None):
     """
@@ -72,14 +73,6 @@ def load_data(predictions_path, ground_truth_path=None):
                 df['target'] = np.nan
     
     return df
-
-def list_identity_columns():
-    """Return the list of standard identity columns used in the dataset."""
-    return [
-        'male', 'female', 'homosexual_gay_or_lesbian', 'christian', 'jewish',
-        'muslim', 'black', 'white', 'psychiatric_or_mental_illness',
-        'asian', 'hindu', 'buddhist', 'atheist', 'bisexual', 'transgender'
-    ]
 
 def write_metrics(df, model_name):
     """

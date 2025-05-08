@@ -6,22 +6,20 @@ This project provides a modern implementation for toxicity classification with d
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/rds-project.git
-cd rds-project
+git clone https://github.com/Amiri-007/kaggle_jigsaw.git
+cd kaggle_jigsaw
 
-# Create virtual environment
-python -m venv .venv
-
-# Activate environment (Windows)
-.\.venv\Scripts\activate
-# OR Activate environment (Linux/Mac)
-# source .venv/bin/activate
+# Create virtual environment and activate it
+python -m venv .venv && source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Download data from Kaggle
-# Place in data/ directory
+# Run the full pipeline (training, blending, fairness metrics, explanations)
+make full-run
+
+# For quick testing, run in dry-run mode
+make full-run ARGS="--dry-run"
 ```
 
 ## Quick Start
