@@ -1,0 +1,13 @@
+fix: repo cleanup + torch cpu pin + HF cache + guard placeholders + seeded dry-run
+
+- Updated .gitignore to exclude auto-generated artifacts
+- Created legacy/ directory and moved old Keras scripts there to avoid attrdict imports
+- Verified torch==2.2.2+cpu pinning with correct PyTorch CPU index URL
+- Verified HF_HOME cache configuration in GitHub workflow
+- Added placeholder image generation to notebook guard for dry-run mode
+- Verified that np.random.seed(42) is properly set in predict.py for dry-run
+- Verified summary.tsv header safeguard is properly implemented
+
+This ensures CI runs will be faster and more deterministic, making figures generation 
+more reliable even in dry-run mode. Overall, these changes enable consistent CI testing
+while keeping the entire RDS fairness audit system maintainable and reproducible. 
