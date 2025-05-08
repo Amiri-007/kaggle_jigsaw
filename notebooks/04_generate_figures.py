@@ -32,6 +32,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from src import figure_utils, threshold_utils
+from pathlib import Path
 
 # Create figs directory if it doesn't exist
 os.makedirs('figs', exist_ok=True)
@@ -128,6 +129,11 @@ for metrics_file in metrics_files:
     # Check if this is a dry-run (all subgroup_auc values are NaN)
     if 'subgroup_auc' in metrics_df.columns and metrics_df['subgroup_auc'].isna().all():
         print(f"Dry-run detected: skipping figure generation for model {model_name}")
+        if not (fig_dir := Path('figs')).exists():
+            fig_dir.mkdir()
+        plt.figure(figsize=(4,2)); plt.text(0.5,0.5, f'Skipped {model_name}', ha='center', va='center')
+        plt.axis('off'); plt.savefig(fig_dir / f'skip_{model_name}.png'); plt.close()
+        figure_inventory.append(str(fig_dir / f'skip_{model_name}.png'))
         continue
     
     # Check if the metrics file has the expected structure
