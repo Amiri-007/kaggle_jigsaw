@@ -24,7 +24,8 @@ The codebase has been reorganized for better clarity and maintainability. See [D
 │   └── run_turbo_large.ps1  # Large dataset turbo pipeline
 ├── explainers/              # Model explainability tools
 │   ├── run_simplified_explainer.py  # Token attribution analysis
-│   └── generate_mock_shap.py        # SHAP value generation
+│   ├── run_turbo_shap.py    # SHAP analysis for turbo model
+│   └── run_turbo_shap_simple.py     # Simplified token importance analysis
 ├── predictions/             # Custom prediction scripts
 │   ├── run_custom_predict.py        # Prediction script
 │   └── large_predict.py             # Prediction for larger datasets
@@ -105,15 +106,34 @@ The turbo mode uses specialized configurations:
 
 ## Model Explainability
 
-We've implemented two approaches for model interpretability:
+We've implemented multiple approaches for model interpretability:
 
-1. **SHAP-based explainer**: Implements SHapley Additive exPlanations to interpret model predictions
+1. **Simplified Token Importance Analysis**: Fast and reliable token importance visualization for the turbo model
    ```bash
-   python explainers/run_simplified_explainer.py --ckpt output/checkpoints/distilbert_headtail_fold0.pth
+   # Run with PowerShell script
+   .\pipelines\run_turbo_shap_simple.ps1
+   
+   # Or directly with Python
+   python explainers/run_turbo_shap_simple.py --ckpt output/checkpoints/distilbert_headtail_fold0.pth
+   ```
+   
+   This approach uses a token occlusion technique to identify the most important tokens and generates:
+   - Token importance bar charts showing the effect of each token on prediction
+   - Color-coded text visualizations
+   - Detailed token importance files
+
+2. **Turbo Model SHAP Analysis**: More advanced SHAP analysis (may be less stable)
+   ```bash
+   # Run with PowerShell script
+   .\pipelines\run_turbo_shap.ps1
+   
+   # Or directly with Python
+   python explainers/run_turbo_shap.py --ckpt output/checkpoints/distilbert_headtail_fold0.pth
    ```
 
-2. **Simplified token attribution**: Uses occlusion masking to identify important tokens
+3. **Other SHAP Approaches**: Additional implementation details
    ```bash
+   python explainers/run_simplified_explainer.py --ckpt output/checkpoints/distilbert_headtail_fold0.pth
    python explainers/generate_mock_shap.py --model_path output/checkpoints/distilbert_headtail_fold0.pth
    ```
 
@@ -154,8 +174,5 @@ MIT License
 
 - [Jigsaw Unintended Bias in Toxicity Classification](https://www.kaggle.com/c/jigsaw-unintended-bias-in-toxicity-classification)
 - [Perspective API](https://perspectiveapi.com/)
-<<<<<<< HEAD
+- [Kaggle 3rd Place Solution](https://www.kaggle.com/competitions/jigsaw-unintended-bias-in-toxicity-classification/discussion/97471)
 - [SHAP: SHapley Additive exPlanations](https://github.com/slundberg/shap)
-=======
-- [Kaggle 3rd Place Solution]([https://medium.com/@yanpanlau/jigsaw-unintended-bias-in-toxicity-classification-top-3-solution-a1309ff8fc53](https://www.kaggle.com/competitions/jigsaw-unintended-bias-in-toxicity-classification/discussion/97471))
->>>>>>> 880d760be1aac5883c20ae913d3ddb877411ef2f
