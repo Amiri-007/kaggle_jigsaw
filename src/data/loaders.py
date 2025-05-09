@@ -4,6 +4,7 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from typing import Dict, List, Optional, Tuple, Union
 from .sampling import apply_negative_downsampling, get_sample_weights
+import pathlib
 
 class ToxicDataset(Dataset):
     """
@@ -18,6 +19,7 @@ class ToxicDataset(Dataset):
         text_col: str = 'comment_text',
         target_col: str = 'target',
         identity_cols: Optional[List[str]] = None,
+        cache_dir: Optional[str] = None,
     ):
         self.data = data_frame
         self.tokenizer = tokenizer
@@ -25,6 +27,7 @@ class ToxicDataset(Dataset):
         self.is_training = is_training
         self.text_col = text_col
         self.target_col = target_col
+        self.cache_dir = cache_dir
         
         # Set default identity columns if none provided
         self.identity_cols = identity_cols or [
@@ -43,14 +46,32 @@ class ToxicDataset(Dataset):
     
     def __getitem__(self, idx):
         row = self.data.iloc[idx]
-        # ------------------------------------------------------------------
-        # Some rows in Civil Comments have NaN or numeric placeholders in
-        # `comment_text`.  HuggingFace tokenizer crashes if input is not str.
-        # Cast anything non-str to safe string so training never aborts.
-        # ------------------------------------------------------------------
-        text = row[self.text_col]
-        if not isinstance(text, str):
-            text = "" if pd.isna(text) else str(text)
+        # ----------------------------------------------------
+        # FAST PATH: use pre-tokenised .pt tensor if present
+        # ----------------------------------------------------
+        tok_cache = getattr(self, "token_cache", None)
+        if tok_cache is None and self.cache_dir:
+            cache_name = f"{self.tokenizer.name_or_path.replace('/','_')}_{self.max_length}.pt"
+            cache_path = pathlib.Path(self.cache_dir) / cache_name
+            if cache_path.exists():
+                self.token_cache = torch.load(cache_path, map_location="cpu")
+                tok_cache = self.token_cache
+                print(f"[DataLoader] Loaded token cache {cache_path}")
+        if tok_cache is not None:
+            input_ids = tok_cache["ids"][idx]
+            attn_mask = tok_cache["attn"][idx]
+        else:
+            text = row[self.text_col]
+            if not isinstance(text, str):
+                text = "" if pd.isna(text) else str(text)
+            enc = self.tokenizer(
+                text,
+                max_length=self.max_length,
+                truncation=True,
+                padding="max_length",
+                return_tensors="pt",
+            )
+            input_ids, attn_mask = enc["input_ids"][0], enc["attention_mask"][0]
         
         # Get identity column values
         identity_values = []
@@ -68,17 +89,11 @@ class ToxicDataset(Dataset):
             
         # Tokenize text if tokenizer provided
         if self.tokenizer:
-            encoding = self.tokenizer(
-                text,
-                max_length=self.max_length,
-                padding='max_length',
-                truncation=True,
-                return_tensors='pt'
-            )
-            
-            # Remove batch dimension added by tokenizer
-            for k, v in encoding.items():
-                encoding[k] = v.squeeze(0)
+            # Create encoding dictionary
+            encoding = {
+                'input_ids': input_ids,
+                'attention_mask': attn_mask
+            }
                 
             return {
                 'input_ids': encoding['input_ids'],
@@ -113,7 +128,8 @@ def create_dataloaders(
     annotator_weight: bool = False,
     num_workers: int = 4,
     first_epoch: bool = True,
-    random_state: int = 42
+    random_state: int = 42,
+    cache_dir: Optional[str] = None
 ) -> Tuple[DataLoader, DataLoader, Optional[torch.Tensor]]:
     """
     Create train and validation dataloaders with optional negative downsampling
@@ -134,6 +150,7 @@ def create_dataloaders(
         num_workers: Number of workers for dataloader
         first_epoch: Whether this is the first epoch (controls downsampling strategy)
         random_state: Random seed for reproducibility
+        cache_dir: Directory to cache tokenized data
         
     Returns:
         train_loader: DataLoader for training data
@@ -158,7 +175,8 @@ def create_dataloaders(
         is_training=True,
         text_col=text_col,
         target_col=target_col,
-        identity_cols=identity_cols
+        identity_cols=identity_cols,
+        cache_dir=cache_dir
     )
     
     valid_dataset = ToxicDataset(
@@ -168,7 +186,8 @@ def create_dataloaders(
         is_training=False,
         text_col=text_col,
         target_col=target_col,
-        identity_cols=identity_cols
+        identity_cols=identity_cols,
+        cache_dir=cache_dir
     )
     
     # Calculate sample weights if requested
