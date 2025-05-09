@@ -1,52 +1,41 @@
-# BERT head-tail model configuration
-model_type: "bert_headtail"
-model_name: "bert-base-uncased"
-
-# Data configuration
-data_dir: "data"
-train_file: "train_folds.csv"
-valid_file: "valid.csv"
-test_file: "test_public_expanded.csv"
-text_col: "comment_text"
-target_col: "target"
-identity_cols:
-  - "male"
-  - "female"
-  - "homosexual_gay_or_lesbian"
-  - "christian"
-  - "jewish"
-  - "muslim"
-  - "black"
-  - "white"
-  - "psychiatric_or_mental_illness"
-  - "asian"
-  - "hindu"
-  - "buddhist"
-  - "atheist"
-  - "bisexual"
-  - "transgender"
-
-# Model parameters
-hidden_size: 768
-num_labels: 1
-
-# Training parameters
+annotator_weight: true
+apply_downsampling: true
+apply_weights: true
 batch_size: 32
-max_length: 128
-num_epochs: 3
-learning_rate: 2.0e-5
-weight_decay: 0.01
-warmup_ratio: 0.1
+data_dir: data
+hidden_size: 768
+identity_cols:
+- male
+- female
+- homosexual_gay_or_lesbian
+- christian
+- jewish
+- muslim
+- black
+- white
+- psychiatric_or_mental_illness
+- asian
+- hindu
+- buddhist
+- atheist
+- bisexual
+- transgender
+learning_rate: 2.0e-05
 max_grad_norm: 1.0
-apply_downsampling: True
-apply_weights: True
-annotator_weight: True  # Enable the 3rd-place trick for log(annotator_count+2) weighting
-pseudo_label_csv: null  # Path to pseudo-labeled data (can be overridden via CLI)
+max_length: 128
+model_name: bert-base-uncased
+model_type: bert_headtail
+num_epochs: 3
+num_labels: 1
 num_workers: 4
-
-# Output configuration
-output_dir: "output"
-save_checkpoint: True
-
-# Random seed
-seed: 42 
+output_dir: output
+pseudo_label_csv: null
+save_checkpoint: true
+seed: 42
+target_col: target
+test_file: test_public_expanded.csv
+text_col: comment_text
+train_file: train.csv
+valid_file: valid.csv
+warmup_ratio: 0.1
+weight_decay: 0.01
