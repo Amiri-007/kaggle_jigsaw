@@ -8,11 +8,72 @@ Outputs: figs/bias_aucs/bias_aucs_comparison.png
 import argparse, pathlib, pandas as pd, numpy as np, seaborn as sns, matplotlib.pyplot as plt
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Add project root to path
-from fairness.metrics_v2 import list_identity_columns, compute_bias_metrics_for_model
+from fairness.metrics_v2 import list_identity_columns, subgroup_auc, bpsn_auc, bnsp_auc
+from sklearn.metrics import roc_auc_score
 
 sns.set_style("whitegrid")
 sns.set_palette("viridis")
 plt.rcParams.update({'font.size': 10})
+
+def compute_bias_metrics_for_model(df, identity_columns, target_column, pred_column):
+    """
+    Compute bias metrics for each identity subgroup.
+    
+    Args:
+        df: DataFrame with identity columns, target, and predictions
+        identity_columns: List of column names for identity subgroups
+        target_column: Name of the column with ground truth labels
+        pred_column: Name of the column with model predictions
+        
+    Returns:
+        Dictionary with metrics for each subgroup and overall metrics
+    """
+    # Convert target to binary if needed
+    y_true = (df[target_column].values >= 0.5).astype(float)
+    y_pred = df[pred_column].values
+    
+    # Calculate overall AUC
+    overall_auc = roc_auc_score(y_true, y_pred)
+    
+    # Calculate metrics for each subgroup
+    results = {}
+    worst_auc = 1.0
+    worst_subgroup = None
+    
+    results['overall'] = {'auc': overall_auc}
+    
+    for subgroup in identity_columns:
+        # Create mask for subgroup membership
+        subgroup_mask = (df[subgroup].values >= 0.5)
+        subgroup_size = subgroup_mask.sum()
+        
+        # Skip tiny subgroups
+        if subgroup_size < 10:
+            continue
+        
+        # Calculate metrics
+        sg_auc = subgroup_auc(y_true, y_pred, subgroup_mask)
+        sg_bpsn = bpsn_auc(y_true, y_pred, subgroup_mask)
+        sg_bnsp = bnsp_auc(y_true, y_pred, subgroup_mask)
+        
+        # Store results
+        results[subgroup] = {
+            'subgroup_auc': sg_auc,
+            'bpsn_auc': sg_bpsn,
+            'bnsp_auc': sg_bnsp,
+            'size': int(subgroup_size)
+        }
+        
+        # Track worst subgroup AUC
+        if not np.isnan(sg_auc) and sg_auc < worst_auc:
+            worst_auc = sg_auc
+            worst_subgroup = subgroup
+    
+    # Add worst subgroup information to overall results
+    results['overall']['worst_auc'] = worst_auc
+    results['overall']['worst_auc_identity'] = worst_subgroup
+    
+    return results
 
 def main():
     ap = argparse.ArgumentParser()
@@ -137,11 +198,19 @@ def main():
     print(f"Worst Subgroup AUC: {overall['worst_auc']:.4f} ({overall['worst_auc_identity']})")
     
     # Show min BPSN and BNSP metrics
-    min_bpsn = min(bias_metrics[sg]['bpsn_auc'] for sg in top_subgroups)
-    min_bpsn_sg = [sg for sg in top_subgroups if bias_metrics[sg]['bpsn_auc'] == min_bpsn][0]
+    min_bpsn = min([bias_metrics[sg]['bpsn_auc'] for sg in top_subgroups 
+                   if 'bpsn_auc' in bias_metrics[sg] and not np.isnan(bias_metrics[sg]['bpsn_auc'])])
+    min_bpsn_sg = [sg for sg in top_subgroups 
+                  if 'bpsn_auc' in bias_metrics[sg] and 
+                  not np.isnan(bias_metrics[sg]['bpsn_auc']) and 
+                  bias_metrics[sg]['bpsn_auc'] == min_bpsn][0]
     
-    min_bnsp = min(bias_metrics[sg]['bnsp_auc'] for sg in top_subgroups)
-    min_bnsp_sg = [sg for sg in top_subgroups if bias_metrics[sg]['bnsp_auc'] == min_bnsp][0]
+    min_bnsp = min([bias_metrics[sg]['bnsp_auc'] for sg in top_subgroups 
+                   if 'bnsp_auc' in bias_metrics[sg] and not np.isnan(bias_metrics[sg]['bnsp_auc'])])
+    min_bnsp_sg = [sg for sg in top_subgroups 
+                  if 'bnsp_auc' in bias_metrics[sg] and 
+                  not np.isnan(bias_metrics[sg]['bnsp_auc']) and 
+                  bias_metrics[sg]['bnsp_auc'] == min_bnsp][0]
     
     print(f"Worst BPSN AUC: {min_bpsn:.4f} ({min_bpsn_sg})")
     print(f"Worst BNSP AUC: {min_bnsp:.4f} ({min_bnsp_sg})")
