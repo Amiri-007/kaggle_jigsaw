@@ -16,8 +16,9 @@ from transformers import (
 )
 from typing import Dict, List, Optional, Tuple, Any, Union
 import random
+from pathlib import Path
 
-from src.data import create_dataloaders, apply_negative_downsampling, get_sample_weights
+from src.data import create_dataloaders, apply_negative_downsampling, get_sample_weights, load_train_valid
 from src.models.lstm_caps import create_lstm_capsule_model
 from src.models.bert_headtail import BertHeadTailForSequenceClassification
 from src.models.gpt2_headtail import GPT2HeadTailForSequenceClassification
@@ -31,6 +32,9 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Define data path constant
+DATA_PATH = Path("data")
 
 def set_seed(seed: int = 42):
     """Set all random seeds for reproducibility"""
@@ -724,8 +728,15 @@ def main():
                         help="Directory with cached tokenized tensors for faster loading")
     parser.add_argument('--token-cache', type=str, default=None,
                         help="Alias for --cache-dir for backward compatibility")
+    parser.add_argument('--valid-frac', type=float, default=0.05)
+    parser.add_argument('--sample-frac', type=float, default=None,
+                      help="Train on random subset (e.g. 0.1 = 10 %) for fast dev.")
     
     args = parser.parse_args()
+    
+    # Set random seed
+    seed = args.seed
+    set_seed(seed)
     
     # Load configuration
     if args.config:
@@ -739,6 +750,14 @@ def main():
     
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
+    
+    # Load data
+    train_df, valid_df = load_train_valid(
+        DATA_PATH / "train.csv",
+        valid_frac=args.valid_frac,
+        random_state=seed,
+        sample_frac=args.sample_frac,
+    )
     
     # Update config with command-line arguments
     config['model_type'] = args.model

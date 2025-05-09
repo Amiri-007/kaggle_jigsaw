@@ -1,4 +1,4 @@
-.PHONY: train predict figures figures-fast help blend test clean setup full-run
+.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run
 
 help:
 	@echo "Available targets:"
@@ -12,6 +12,7 @@ help:
 	@echo "  test        - Run tests"
 	@echo "  clean       - Clean output directories"
 	@echo "  full-run    - Run a full end-to-end run"
+	@echo "  dev-run     - 10% subset, 1 epoch each, ~12 min"
 
 setup:
 	pip install -r requirements.txt
@@ -59,7 +60,8 @@ clean:
 	rm -rf src/__pycache__/
 	find . -name "*.pyc" -delete
 
-full-run: ## single command end-to-end
+full-run: ## heavyweight run
+	@echo "running full pipeline ..."
 	$(MAKE) clean
 	python -m src.train --model bert_headtail --config configs/bert_headtail.yaml --epochs 2 --save-checkpoint $(ARGS)
 	python scripts/pseudo_label.py --base-model output/checkpoints/bert_headtail_fold0.pth --unlabeled-csv data/train.csv --out-csv output/pseudo_bert.csv
@@ -68,4 +70,12 @@ full-run: ## single command end-to-end
 	python -m src.blend_optuna --pred-dir output/preds --ground-truth data/valid.csv --n-trials 200 --out-csv output/preds/blend_ensemble.csv
 	python scripts/write_metrics.py --predictions output/preds/blend_ensemble.csv --model-name blend_ensemble
 	$(MAKE) figures
-	python scripts/run_explainers.py --model-path output/checkpoints/bert_headtail_fold0.pth --n-samples 500 
+	python scripts/run_explainers.py --model-path output/checkpoints/bert_headtail_fold0.pth --n-samples 500
+
+dev-run:    ## 10% subset, 1 epoch each, ~12 min
+	python -m src.train --model bert_headtail --config configs/bert_headtail_dev.yaml --fp16 --sample-frac 0.1
+	python -m src.train --model lstm_caps     --config configs/lstm_caps_dev.yaml     --sample-frac 0.1
+	python -m src.train --model gpt2_headtail --config configs/gpt2_headtail_dev.yaml --fp16 --sample-frac 0.1
+	python -m src.blend_optuna --pred-dir output/preds --ground-truth data/valid.csv --n-trials 25 --out-csv output/preds/blend_dev.csv
+	python scripts/write_metrics.py --pred output/preds/blend_dev.csv --model-name blend_dev
+	make figures-fast 

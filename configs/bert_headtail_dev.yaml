@@ -1,0 +1,13 @@
+# inherits from full YAML but tweaks epochs/batch
+model_name: distilbert-base-uncased
+max_len: 192
+max_head_len: 96
+batch_size: 12
+epochs: 1
+sample_frac: 0.1
+fp16: true
+loss_alpha: 0.1
+loss_beta: 1.0
+data_dir: "data"
+train_file: "train.csv"
+valid_file: "valid.csv" 
