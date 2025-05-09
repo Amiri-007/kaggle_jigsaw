@@ -17,10 +17,10 @@ from transformers import (
 from typing import Dict, List, Optional, Tuple, Any, Union
 import random
 
-from data import create_dataloaders, apply_negative_downsampling, get_sample_weights
-from models.lstm_caps import create_lstm_capsule_model
-from models.bert_headtail import BertHeadTailForSequenceClassification
-from models.gpt2_headtail import GPT2HeadTailForSequenceClassification
+from src.data import create_dataloaders, apply_negative_downsampling, get_sample_weights
+from src.models.lstm_caps import create_lstm_capsule_model
+from src.models.bert_headtail import BertHeadTailForSequenceClassification
+from src.models.gpt2_headtail import GPT2HeadTailForSequenceClassification
 
 # Configure logging
 logging.basicConfig(
@@ -169,7 +169,8 @@ def train_epoch(
     max_grad_norm: float = 1.0,
     model_type: str = 'lstm_caps',
     dry_run: bool = False,
-    dry_run_batches: int = 5
+    dry_run_batches: int = 5,
+    scaler: Optional[Any] = None  # GradScaler for mixed precision
 ) -> Dict[str, float]:
     """Train for one epoch"""
     model.train()
@@ -198,85 +199,178 @@ def train_epoch(
         if sample_weights is not None:
             batch_indices = batch['idx'].to(device)
             batch_weights = sample_weights[batch_indices].to(device)
-        else:
-            batch_weights = None
         
-        # Forward pass
-        if model_type == 'lstm_caps':
-            outputs = model(input_ids, lengths=attention_mask.sum(dim=1))
-            logits = outputs
-            
-        elif model_type == 'bert_headtail':
-            # For BERT head-tail, prepare head and tail inputs
-            head_inputs = {
-                'head_input_ids': input_ids,
-                'head_attention_mask': attention_mask,
-                'tail_input_ids': input_ids,  # Placeholder, will be truncated in the model
-                'tail_attention_mask': attention_mask,  # Placeholder
-            }
-            outputs = model(**head_inputs)
-            logits = outputs['logits'].squeeze(-1)
-            
-        elif model_type == 'gpt2_headtail':
-            # For GPT-2 head-tail, prepare head and tail inputs
-            head_inputs = {
-                'head_input_ids': input_ids,
-                'head_attention_mask': attention_mask,
-                'tail_input_ids': input_ids,  # Placeholder, will be truncated in the model
-                'tail_attention_mask': attention_mask,  # Placeholder
-            }
-            outputs = model(**head_inputs)
-            logits = outputs['logits'].squeeze(-1)
-            
-        else:
-            raise ValueError(f"Unsupported model type: {model_type}")
-        
-        # Calculate loss
-        losses = loss_fn(logits, targets)
-        
-        # Apply sample weights if provided
-        if batch_weights is not None:
-            losses = losses * batch_weights
-            
-        loss = losses.mean()
-        
-        # Backward pass
+        # Zero gradients
         optimizer.zero_grad()
-        loss.backward()
         
-        # Clip gradients
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+        # Forward pass with optional mixed precision
+        if scaler is not None:
+            # Use torch.cuda.amp.autocast
+            with torch.cuda.amp.autocast():
+                # Forward pass depends on model type
+                if model_type == 'lstm_caps':
+                    outputs = model(input_ids)
+                    logits = outputs
+                elif model_type in ['bert_headtail', 'gpt2_headtail']:
+                    # For transformer models
+                    tail_input_ids = batch.get('tail_input_ids', None)
+                    tail_attention_mask = batch.get('tail_attention_mask', None)
+                    
+                    if tail_input_ids is not None:
+                        tail_input_ids = tail_input_ids.to(device)
+                        tail_attention_mask = tail_attention_mask.to(device)
+                        
+                        # Use head_ prefix for parameters with BERT head-tail model
+                        if model_type == 'bert_headtail':
+                            outputs = model(
+                                head_input_ids=input_ids,
+                                head_attention_mask=attention_mask,
+                                tail_input_ids=tail_input_ids,
+                                tail_attention_mask=tail_attention_mask
+                            )
+                            # BERT model returns a dict with 'logits' key
+                            logits = outputs['logits']
+                        else:
+                            outputs = model(
+                                input_ids=input_ids,
+                                attention_mask=attention_mask,
+                                tail_input_ids=tail_input_ids,
+                                tail_attention_mask=tail_attention_mask
+                            )
+                            # GPT2 model returns an object with logits attribute
+                            logits = outputs.logits
+                    else:
+                        # If no tail inputs, use input as both head and tail
+                        if model_type == 'bert_headtail':
+                            outputs = model(
+                                head_input_ids=input_ids,
+                                head_attention_mask=attention_mask,
+                                tail_input_ids=input_ids,
+                                tail_attention_mask=attention_mask
+                            )
+                            # BERT model returns a dict with 'logits' key
+                            logits = outputs['logits']
+                        else:
+                            outputs = model(
+                                input_ids=input_ids,
+                                attention_mask=attention_mask
+                            )
+                            # GPT2 model returns an object with logits attribute
+                            logits = outputs.logits
+                    
+                    # Calculate loss (weighted if sample_weights provided)
+                    loss = loss_fn(logits.view(-1), targets.view(-1).float())
+                    
+                    if sample_weights is not None:
+                        # Apply sample weights
+                        loss = loss * batch_weights
+                    
+                    # Calculate mean loss
+                    loss = loss.mean()
+                
+                # Backward pass with scaler
+                scaler.scale(loss).backward()
+                
+                # Clip gradients
+                if max_grad_norm > 0:
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+                
+                # Step optimizer and scaler
+                scaler.step(optimizer)
+                scaler.update()
+        else:
+            # Regular forward pass without mixed precision
+            # Forward pass depends on model type
+            if model_type == 'lstm_caps':
+                outputs = model(input_ids)
+                logits = outputs
+            elif model_type in ['bert_headtail', 'gpt2_headtail']:
+                # For transformer models
+                tail_input_ids = batch.get('tail_input_ids', None)
+                tail_attention_mask = batch.get('tail_attention_mask', None)
+                
+                if tail_input_ids is not None:
+                    tail_input_ids = tail_input_ids.to(device)
+                    tail_attention_mask = tail_attention_mask.to(device)
+                    
+                    # Use head_ prefix for parameters with BERT head-tail model
+                    if model_type == 'bert_headtail':
+                        outputs = model(
+                            head_input_ids=input_ids,
+                            head_attention_mask=attention_mask,
+                            tail_input_ids=tail_input_ids,
+                            tail_attention_mask=tail_attention_mask
+                        )
+                        # BERT model returns a dict with 'logits' key
+                        logits = outputs['logits']
+                    else:
+                        outputs = model(
+                            input_ids=input_ids,
+                            attention_mask=attention_mask,
+                            tail_input_ids=tail_input_ids,
+                            tail_attention_mask=tail_attention_mask
+                        )
+                        # GPT2 model returns an object with logits attribute
+                        logits = outputs.logits
+                else:
+                    # If no tail inputs, use input as both head and tail
+                    if model_type == 'bert_headtail':
+                        outputs = model(
+                            head_input_ids=input_ids,
+                            head_attention_mask=attention_mask,
+                            tail_input_ids=input_ids,
+                            tail_attention_mask=attention_mask
+                        )
+                        # BERT model returns a dict with 'logits' key
+                        logits = outputs['logits']
+                    else:
+                        outputs = model(
+                            input_ids=input_ids,
+                            attention_mask=attention_mask
+                        )
+                        # GPT2 model returns an object with logits attribute
+                        logits = outputs.logits
+                
+                # Calculate loss (weighted if sample_weights provided)
+                loss = loss_fn(logits.view(-1), targets.view(-1).float())
+                
+                if sample_weights is not None:
+                    # Apply sample weights
+                    loss = loss * batch_weights
+                
+                # Calculate mean loss
+                loss = loss.mean()
+                
+                # Backward pass
+                loss.backward()
+                
+                # Clip gradients
+                if max_grad_norm > 0:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+                
+                # Step optimizer
+                optimizer.step()
+            
+            # Step scheduler
+            if scheduler is not None:
+                scheduler.step()
+            
+            # Update metrics
+            total_loss += loss.item() * len(targets)
+            total_examples += len(targets)
+            step += 1
         
-        # Update weights
-        optimizer.step()
-        
-        # Update EMA weights if using LSTM-Capsule model
-        if model_type == 'lstm_caps' and hasattr(model, 'update_ema_weights'):
-            model.update_ema_weights()
-        
-        # Update learning rate
-        if scheduler is not None:
-            scheduler.step()
-        
-        # Track metrics
-        total_loss += loss.item() * len(targets)
-        total_examples += len(targets)
-        step += 1
-        
-        # Log progress
-        if step % 50 == 0 or step == len(train_loader):
-            logger.info(f"Epoch {epoch} | Step {step}/{len(train_loader)} | "
-                       f"Loss: {total_loss/total_examples:.4f} | "
-                       f"Time: {time.time() - start_time:.2f}s")
-    
-    # Calculate average loss
-    avg_loss = total_loss / total_examples
-    
+    # Calculate epoch metrics
+    epoch_loss = total_loss / total_examples
     metrics = {
-        'loss': avg_loss,
+        'loss': epoch_loss,
         'epoch': epoch,
         'steps': step
     }
+    
+    duration = time.time() - start_time
+    logger.debug(f"Epoch {epoch} training completed in {duration:.2f}s. Metrics: {metrics}")
     
     return metrics
 
@@ -313,30 +407,26 @@ def validate(
             
             # Forward pass
             if model_type == 'lstm_caps':
-                outputs = model(input_ids, lengths=attention_mask.sum(dim=1))
+                outputs = model(input_ids)
                 logits = outputs
                 
             elif model_type == 'bert_headtail':
-                # For BERT head-tail, prepare head and tail inputs
-                head_inputs = {
-                    'head_input_ids': input_ids,
-                    'head_attention_mask': attention_mask,
-                    'tail_input_ids': input_ids,  # Placeholder, will be truncated in the model
-                    'tail_attention_mask': attention_mask,  # Placeholder
-                }
-                outputs = model(**head_inputs)
-                logits = outputs['logits'].squeeze(-1)
+                # For BERT head-tail
+                outputs = model(
+                    head_input_ids=input_ids,
+                    head_attention_mask=attention_mask,
+                    tail_input_ids=input_ids,  # Using same input for tail in validation
+                    tail_attention_mask=attention_mask
+                )
+                logits = outputs['logits']
                 
             elif model_type == 'gpt2_headtail':
-                # For GPT-2 head-tail, prepare head and tail inputs
-                head_inputs = {
-                    'head_input_ids': input_ids,
-                    'head_attention_mask': attention_mask,
-                    'tail_input_ids': input_ids,  # Placeholder, will be truncated in the model
-                    'tail_attention_mask': attention_mask,  # Placeholder
-                }
-                outputs = model(**head_inputs)
-                logits = outputs['logits'].squeeze(-1)
+                # For GPT-2 head-tail
+                outputs = model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask
+                )
+                logits = outputs.logits
                 
             else:
                 raise ValueError(f"Unsupported model type: {model_type}")
@@ -388,11 +478,11 @@ def save_checkpoint(
     
     # Create output directory if it doesn't exist
     output_dir = config.get('output_dir', 'output')
-    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "checkpoints"), exist_ok=True)
     
     # Create checkpoint path
     model_type = config['model_type']
-    checkpoint_path = os.path.join(output_dir, f"{model_type}_fold{fold}.pth")
+    checkpoint_path = os.path.join(output_dir, "checkpoints", f"{model_type}_fold{fold}.pth")
     
     # Create checkpoint
     checkpoint = {
@@ -410,7 +500,17 @@ def save_checkpoint(
     
     return checkpoint_path
 
-def train(config: Dict[str, Any], pseudo_label_path: Optional[str] = None) -> str:
+def load_checkpoint(checkpoint_path: str) -> Dict[str, Any]:
+    """Load saved model checkpoint for resuming training"""
+    if not os.path.exists(checkpoint_path):
+        logger.error(f"Checkpoint not found: {checkpoint_path}")
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+    
+    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    logger.info(f"Loaded checkpoint from {checkpoint_path} (epoch {checkpoint.get('epoch', 0)})")
+    return checkpoint
+
+def train(config: Dict[str, Any], pseudo_label_path: Optional[str] = None, resume_checkpoint_path: Optional[str] = None) -> str:
     """Main training function"""
     # Set random seed
     set_seed(config.get('seed', 42))
@@ -419,12 +519,87 @@ def train(config: Dict[str, Any], pseudo_label_path: Optional[str] = None) -> st
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info(f"Using device: {device}")
     
+    # Initialize mixed precision training if specified
+    fp16 = config.get('fp16', False)
+    scaler = None
+    if fp16 and torch.cuda.is_available():
+        from torch.cuda.amp import GradScaler
+        scaler = GradScaler()
+        logger.info("Mixed precision (FP16) training enabled with GradScaler")
+    
     # Load data
     train_df, valid_df = load_data(config, pseudo_label_path)
     
-    # Create model and tokenizer
-    model, tokenizer = create_model_and_tokenizer(config)
-    model = model.to(device)
+    # Resume from checkpoint or create a new model
+    start_epoch = 1
+    best_val_auc = 0.0
+    best_checkpoint_path = None
+    
+    if resume_checkpoint_path:
+        logger.info(f"Resuming training from checkpoint: {resume_checkpoint_path}")
+        checkpoint = load_checkpoint(resume_checkpoint_path)
+        
+        # Extract checkpoint data
+        saved_config = checkpoint.get('config', {})
+        start_epoch = checkpoint.get('epoch', 0) + 1
+        metrics = checkpoint.get('metrics', {})
+        best_val_auc = metrics.get('val_auc', 0.0)
+        
+        # Create model and tokenizer from the original config to ensure architecture match
+        model, tokenizer = create_model_and_tokenizer(config)
+        model = model.to(device)
+        
+        # Load model weights
+        model.load_state_dict(checkpoint['model_state_dict'])
+        logger.info(f"Loaded model weights from checkpoint (epoch {start_epoch-1})")
+        
+        # Create optimizer and scheduler (will be overwritten by checkpoint states)
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=config.get('learning_rate', 2e-5),
+            weight_decay=config.get('weight_decay', 0.01)
+        )
+        
+        # Load optimizer state
+        if 'optimizer_state_dict' in checkpoint:
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            logger.info("Loaded optimizer state from checkpoint")
+        
+        # Create learning rate scheduler
+        total_steps = len(train_df) // config.get('batch_size', 32) * config.get('num_epochs', 3)
+        warmup_steps = int(total_steps * config.get('warmup_ratio', 0.1))
+        
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=warmup_steps,
+            num_training_steps=total_steps
+        )
+        
+        # Load scheduler state
+        if 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict'] is not None:
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            logger.info("Loaded scheduler state from checkpoint")
+    else:
+        # Create model and tokenizer
+        model, tokenizer = create_model_and_tokenizer(config)
+        model = model.to(device)
+        
+        # Create optimizer
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=config.get('learning_rate', 2e-5),
+            weight_decay=config.get('weight_decay', 0.01)
+        )
+        
+        # Create learning rate scheduler
+        total_steps = len(train_df) // config.get('batch_size', 32) * config.get('num_epochs', 3)
+        warmup_steps = int(total_steps * config.get('warmup_ratio', 0.1))
+        
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=warmup_steps,
+            num_training_steps=total_steps
+        )
     
     # Apply annotator weight if specified
     apply_annotator_weight = config.get('annotator_weight', False)
@@ -444,36 +619,19 @@ def train(config: Dict[str, Any], pseudo_label_path: Optional[str] = None) -> st
         apply_weights=config.get('apply_weights', True),
         annotator_weight=apply_annotator_weight,
         num_workers=config.get('num_workers', 4),
-        first_epoch=True,
+        first_epoch=(start_epoch == 1),  # Only apply first-epoch downsampling if this is epoch 1
         random_state=config.get('seed', 42)
     )
     
     if sample_weights is not None:
         sample_weights = sample_weights.to(device)
     
-    # Create optimizer
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=config.get('learning_rate', 2e-5),
-        weight_decay=config.get('weight_decay', 0.01)
-    )
-    
-    # Create learning rate scheduler
-    total_steps = len(train_loader) * config.get('num_epochs', 3)
-    warmup_steps = int(total_steps * config.get('warmup_ratio', 0.1))
-    
-    scheduler = get_linear_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=warmup_steps,
-        num_training_steps=total_steps
-    )
-    
     # Training loop
-    best_val_auc = 0.0
-    best_checkpoint_path = None
+    num_epochs = config.get('num_epochs', 3)
+    logger.info(f"Starting training from epoch {start_epoch}/{num_epochs}")
     
-    for epoch in range(1, config.get('num_epochs', 3) + 1):
-        logger.info(f"Starting epoch {epoch}/{config.get('num_epochs', 3)}")
+    for epoch in range(start_epoch, num_epochs + 1):
+        logger.info(f"Starting epoch {epoch}/{num_epochs}")
         
         # Apply downsampling for this epoch
         first_epoch = (epoch == 1)
@@ -490,7 +648,8 @@ def train(config: Dict[str, Any], pseudo_label_path: Optional[str] = None) -> st
             max_grad_norm=config.get('max_grad_norm', 1.0),
             model_type=config.get('model_type', 'lstm_caps'),
             dry_run=config.get('dry_run', False),
-            dry_run_batches=config.get('dry_run_batches', 5)
+            dry_run_batches=config.get('dry_run_batches', 5),
+            scaler=scaler
         )
         
         # Validate
@@ -551,10 +710,24 @@ def main():
                         help="Random seed for reproducibility")
     parser.add_argument('--pseudo-label-csv', type=str, default=None,
                         help="Path to CSV file containing pseudo-labeled data")
+    parser.add_argument('--fp16', action='store_true', 
+                        help="Use mixed precision (FP16) training to speed up and reduce memory usage")
+    parser.add_argument('--config', type=str, default=None,
+                        help="Path to specific config file (overrides config_dir and model)")
+    parser.add_argument('--epochs', type=int, default=None,
+                        help="Override number of epochs in config")
+    parser.add_argument('--save-checkpoint', action='store_true',
+                        help="Force saving checkpoint even in dry-run mode")
+    parser.add_argument('--resume-checkpoint', type=str, default=None,
+                        help="Path to checkpoint file to resume training from")
+    
     args = parser.parse_args()
     
     # Load configuration
-    config_path = os.path.join(args.config_dir, f"{args.model}.yaml")
+    if args.config:
+        config_path = args.config
+    else:
+        config_path = os.path.join(args.config_dir, f"{args.model}.yaml")
     
     if not os.path.exists(config_path):
         logger.error(f"Config file not found: {config_path}")
@@ -568,18 +741,32 @@ def main():
     config['fold'] = args.fold
     config['seed'] = args.seed
     
+    # Override number of epochs if specified
+    if args.epochs is not None:
+        config['num_epochs'] = args.epochs
+    
     # For dry-run, set specific parameters
     if args.dry_run:
         config['dry_run'] = True
         config['dry_run_batches'] = 2
-        config['save_checkpoint'] = False
+        config['save_checkpoint'] = args.save_checkpoint
     else:
         config['dry_run'] = False
         config['save_checkpoint'] = True
     
+    # Set FP16 flag for mixed precision training
+    config['fp16'] = args.fp16
+    if args.fp16:
+        logger.info("Using mixed precision (FP16) training")
+    
+    # Check for resume checkpoint in config
+    resume_checkpoint_path = args.resume_checkpoint
+    if resume_checkpoint_path is None and 'resume_checkpoint' in config:
+        resume_checkpoint_path = config.get('resume_checkpoint')
+    
     # Train model
     try:
-        best_checkpoint_path = train(config, args.pseudo_label_csv)
+        best_checkpoint_path = train(config, args.pseudo_label_csv, resume_checkpoint_path)
         logger.info(f"Training complete. Best checkpoint: {best_checkpoint_path}")
     except Exception as e:
         logger.error(f"Error during training: {e}")
