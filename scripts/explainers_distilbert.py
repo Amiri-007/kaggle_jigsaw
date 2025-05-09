@@ -30,12 +30,28 @@ def get_sample(df: pd.DataFrame, sample: int, seed: int = 42) -> pd.DataFrame:
 # ---------------------------------------------------------------------
 def build_explainer(model, tokenizer, max_len=192):
     def predictor(texts):
-        enc = tokenizer(texts,
+        # Handle different types of input that SHAP might pass
+        if isinstance(texts, str):
+            # Single text input
+            batch_texts = [texts]
+        elif isinstance(texts, list) and all(isinstance(t, str) for t in texts):
+            # List of text inputs
+            batch_texts = texts
+        else:
+            # Convert to string if needed
+            if hasattr(texts, 'tolist'):  # For numpy arrays
+                batch_texts = [str(x) for x in texts.tolist()]
+            else:
+                batch_texts = [str(x) for x in texts]
+        
+        # Tokenize and get model output
+        enc = tokenizer(batch_texts,
                         max_length=max_len,
                         truncation=True,
                         padding="max_length",
                         return_tensors="pt").to(DEVICE)
         return model(**enc).logits
+    
     masker = shap.maskers.Text(tokenizer)
     return shap.Explainer(predictor, masker, output_names=["toxicity"])
 
@@ -76,7 +92,14 @@ def main():
     expl = build_explainer(model, tok)
 
     print("🔹 computing SHAP values … (may take ~3-4 min)")
-    shap_vals = expl(texts, silent=True)           # ⇒ shap.Explanation
+    try:
+        shap_vals = expl(texts, silent=True)           # ⇒ shap.Explanation
+    except Exception as e:
+        print(f"Error during SHAP computation: {str(e)}")
+        print("Trying with a smaller batch...")
+        # Try with a smaller sample if there's an error
+        small_sample = texts[:min(500, len(texts))]
+        shap_vals = expl(small_sample, silent=True)
 
     # save raw
     np.savez_compressed(out_d/"shap_values.npz",

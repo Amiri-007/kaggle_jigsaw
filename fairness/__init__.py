@@ -1,6 +1,11 @@
-from .metrics_v2 import BiasReport, final_score
+from .metrics_v2 import (list_identity_columns, subgroup_auc, 
+                   bpsn_auc, bnsp_auc, generalized_power_mean, BiasReport)
 
 __all__ = [
     'BiasReport',
-    'final_score'
+    'list_identity_columns',
+    'subgroup_auc',
+    'bpsn_auc',
+    'bnsp_auc',
+    'generalized_power_mean'
 ] 
