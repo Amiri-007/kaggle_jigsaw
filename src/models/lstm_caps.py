@@ -2,7 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import logging
 from typing import Optional, Tuple, Dict, Any, List
+
+logger = logging.getLogger(__name__)
 
 class PrimaryCapsule(nn.Module):
     """
@@ -194,8 +197,25 @@ class LSTMCapsuleNetwork(nn.Module):
         # Reshape to [batch_size, num_capsules * seq_len, capsule_dim]
         capsule_out = capsule_out.view(batch_size, -1, self.primary_capsule.out_channels)
         
+        # Get the correct shape for the capsule attention mask
+        # In turbo mode or with smaller inputs, we need to handle shape mismatches
+        capsule_seq_len = capsule_out.size(1)
+        if capsule_seq_len != mask.view(batch_size, -1).size(1):
+            # Recreate mask with correct shape
+            if capsule_seq_len == self.primary_capsule.num_capsules * seq_len:
+                # Repeat each mask element for each capsule
+                capsule_mask = mask.unsqueeze(-1).repeat(1, 1, self.primary_capsule.num_capsules)
+                capsule_mask = capsule_mask.view(batch_size, -1)
+            else:
+                # We need to adapt the mask specifically (use the first part as an approximation)
+                # This is a fallback for unusual shape scenarios
+                logger.warning(f"Capsule shape mismatch: mask size {mask.size()}, capsule size {capsule_out.size()}")
+                capsule_mask = torch.ones(batch_size, capsule_seq_len, device=x.device, dtype=torch.bool)
+        else:
+            capsule_mask = mask.view(batch_size, -1)
+        
         # Apply self-attention
-        attended_caps, _ = self.attention(capsule_out, mask.view(batch_size, -1))
+        attended_caps, _ = self.attention(capsule_out, capsule_mask)
         
         # Final prediction
         logits = self.fc(attended_caps)  # [batch_size, 1]
