@@ -224,4 +224,4 @@ MIT License
 
 - [Jigsaw Unintended Bias in Toxicity Classification](https://www.kaggle.com/c/jigsaw-unintended-bias-in-toxicity-classification)
 - [Perspective API](https://perspectiveapi.com/)
-- [Kaggle 3rd Place Solution](https://medium.com/@yanpanlau/jigsaw-unintended-bias-in-toxicity-classification-top-3-solution-a1309ff8fc53)
+- [Kaggle 3rd Place Solution]([https://medium.com/@yanpanlau/jigsaw-unintended-bias-in-toxicity-classification-top-3-solution-a1309ff8fc53](https://www.kaggle.com/competitions/jigsaw-unintended-bias-in-toxicity-classification/discussion/97471))
