@@ -720,6 +720,10 @@ def main():
                         help="Force saving checkpoint even in dry-run mode")
     parser.add_argument('--resume-checkpoint', type=str, default=None,
                         help="Path to checkpoint file to resume training from")
+    parser.add_argument('--cache-dir', type=str, default=None,
+                        help="Directory with cached tokenized tensors for faster loading")
+    parser.add_argument('--token-cache', type=str, default=None,
+                        help="Alias for --cache-dir for backward compatibility")
     
     args = parser.parse_args()
     
