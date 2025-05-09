@@ -17,6 +17,7 @@ from transformers import (
 from typing import Dict, List, Optional, Tuple, Any, Union
 import random
 from pathlib import Path
+from tqdm.auto import tqdm
 
 from src.data import create_dataloaders, apply_negative_downsampling, get_sample_weights, load_train_valid
 from src.models.lstm_caps import create_lstm_capsule_model
@@ -174,7 +175,8 @@ def train_epoch(
     model_type: str = 'lstm_caps',
     dry_run: bool = False,
     dry_run_batches: int = 5,
-    scaler: Optional[Any] = None  # GradScaler for mixed precision
+    scaler: Optional[Any] = None,  # GradScaler for mixed precision
+    turbo_mode: bool = False
 ) -> Dict[str, float]:
     """Train for one epoch"""
     model.train()
@@ -189,7 +191,10 @@ def train_epoch(
     
     start_time = time.time()
     
-    for batch_idx, batch in enumerate(train_loader):
+    # Add progress bar
+    pbar = tqdm(train_loader, desc=f"Epoch {epoch}", disable=False)
+    
+    for batch_idx, batch in enumerate(pbar):
         # Stop early if dry run
         if dry_run and batch_idx >= dry_run_batches:
             break
@@ -359,12 +364,20 @@ def train_epoch(
             # Step scheduler
             if scheduler is not None:
                 scheduler.step()
-            
-            # Update metrics
-            total_loss += loss.item() * len(targets)
-            total_examples += len(targets)
-            step += 1
         
+        # Update metrics
+        total_loss += loss.item() * len(targets)
+        total_examples += len(targets)
+        step += 1
+        
+        # Update progress bar
+        pbar.set_postfix({'loss': loss.item(), 'avg_loss': total_loss / total_examples})
+        
+        # In turbo mode, break early (train on fewer batches)
+        if turbo_mode and batch_idx >= (100 if model_type == 'lstm_caps' else 50):
+            logger.info(f"Turbo mode enabled: stopping after {batch_idx+1} batches")
+            break
+    
     # Calculate epoch metrics
     epoch_loss = total_loss / total_examples
     metrics = {
@@ -384,7 +397,8 @@ def validate(
     device: torch.device,
     model_type: str = 'lstm_caps',
     dry_run: bool = False,
-    dry_run_batches: int = 5
+    dry_run_batches: int = 5,
+    turbo_mode: bool = False
 ) -> Dict[str, float]:
     """Evaluate model on validation set"""
     model.eval()
@@ -398,10 +412,18 @@ def validate(
     # Loss function
     loss_fn = nn.BCEWithLogitsLoss()
     
+    # Add progress bar
+    pbar = tqdm(valid_loader, desc="Validation", disable=False)
+    
     with torch.no_grad():
-        for batch_idx, batch in enumerate(valid_loader):
+        for batch_idx, batch in enumerate(pbar):
             # Stop early if dry run
             if dry_run and batch_idx >= dry_run_batches:
+                break
+            
+            # In turbo mode, only evaluate on a small subset
+            if turbo_mode and batch_idx >= 50:
+                logger.info(f"Turbo mode enabled: stopping validation after {batch_idx+1} batches")
                 break
                 
             # Move tensors to device
@@ -446,6 +468,9 @@ def validate(
             total_examples += len(targets)
             all_predictions.extend(probs.cpu().numpy().tolist())
             all_targets.extend(targets.cpu().numpy().tolist())
+            
+            # Update progress bar
+            pbar.set_postfix({'loss': loss.item(), 'avg_loss': total_loss / total_examples})
     
     # Calculate average loss and AUC
     avg_loss = total_loss / total_examples
@@ -518,6 +543,11 @@ def train(config: Dict[str, Any], pseudo_label_path: Optional[str] = None, resum
     """Main training function"""
     # Set random seed
     set_seed(config.get('seed', 42))
+    
+    # Check if turbo mode is enabled
+    turbo_mode = config.get('turbo_mode', False)
+    if turbo_mode:
+        logger.info("🚀 TURBO MODE ENABLED - Ultra-fast training with reduced steps")
     
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -653,7 +683,8 @@ def train(config: Dict[str, Any], pseudo_label_path: Optional[str] = None, resum
             model_type=config.get('model_type', 'lstm_caps'),
             dry_run=config.get('dry_run', False),
             dry_run_batches=config.get('dry_run_batches', 5),
-            scaler=scaler
+            scaler=scaler,
+            turbo_mode=turbo_mode
         )
         
         # Validate
@@ -663,7 +694,8 @@ def train(config: Dict[str, Any], pseudo_label_path: Optional[str] = None, resum
             device=device,
             model_type=config.get('model_type', 'lstm_caps'),
             dry_run=config.get('dry_run', False),
-            dry_run_batches=config.get('dry_run_batches', 5)
+            dry_run_batches=config.get('dry_run_batches', 5),
+            turbo_mode=turbo_mode
         )
         
         # Combine metrics
@@ -731,6 +763,8 @@ def main():
     parser.add_argument('--valid-frac', type=float, default=0.05)
     parser.add_argument('--sample-frac', type=float, default=None,
                       help="Train on random subset (e.g. 0.1 = 10 %) for fast dev.")
+    parser.add_argument('--turbo', action='store_true',
+                      help="Enable turbo mode for ultra-fast training with reduced steps")
     
     args = parser.parse_args()
     
@@ -781,6 +815,9 @@ def main():
     config['fp16'] = args.fp16
     if args.fp16:
         logger.info("Using mixed precision (FP16) training")
+    
+    # Set turbo mode flag
+    config['turbo_mode'] = args.turbo
     
     # Check for resume checkpoint in config
     resume_checkpoint_path = args.resume_checkpoint

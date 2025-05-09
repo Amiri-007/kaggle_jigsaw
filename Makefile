@@ -1,4 +1,4 @@
-.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run
+.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run
 
 help:
 	@echo "Available targets:"
@@ -13,6 +13,7 @@ help:
 	@echo "  clean       - Clean output directories"
 	@echo "  full-run    - Run a full end-to-end run"
 	@echo "  dev-run     - 10% subset, 1 epoch each, ~12 min"
+	@echo "  turbo-run   - 5% subset with progress bars, ~5 min"
 
 setup:
 	pip install -r requirements.txt
@@ -78,4 +79,13 @@ dev-run:    ## 10% subset, 1 epoch each, ~12 min
 	python -m src.train --model gpt2_headtail --config configs/gpt2_headtail_dev.yaml --fp16 --sample-frac 0.1
 	python -m src.blend_optuna --pred-dir output/preds --ground-truth data/valid.csv --n-trials 25 --out-csv output/preds/blend_dev.csv
 	python scripts/write_metrics.py --pred output/preds/blend_dev.csv --model-name blend_dev
+	make figures-fast
+
+turbo-run:  ## Ultra-fast mode: 5% subset, progress bars, ~5 min
+	@echo "🚀 TURBO MODE: Ultra-fast training pipeline with progress bars"
+	python -m src.train --model bert_headtail --config configs/bert_headtail_turbo.yaml --fp16 --turbo
+	python -m src.train --model lstm_caps     --config configs/lstm_caps_turbo.yaml     --turbo
+	python -m src.train --model gpt2_headtail --config configs/gpt2_headtail_turbo.yaml --fp16 --turbo
+	python -m src.blend_optuna --pred-dir output/preds --ground-truth data/valid.csv --n-trials 10 --out-csv output/preds/blend_turbo.csv
+	python scripts/write_metrics.py --pred output/preds/blend_turbo.csv --model-name blend_turbo
 	make figures-fast 

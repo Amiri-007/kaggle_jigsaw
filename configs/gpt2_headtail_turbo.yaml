@@ -1,0 +1,12 @@
+# Ultra-fast turbo config - smaller sequence length, fewer steps
+model_name: gpt2
+max_len: 128
+max_head_len: 64
+batch_size: 8
+epochs: 1
+fp16: true
+sample_frac: 0.05
+turbo_mode: true
+data_dir: "data"
+train_file: "train.csv"
+valid_file: "valid.csv" 

@@ -1,0 +1,11 @@
+# Ultra-fast turbo config - smaller model, smaller sample, and fewer steps
+max_len: 128
+batch_size: 512
+epochs: 1
+max_features: 50000
+device: cuda
+sample_frac: 0.05
+turbo_mode: true
+data_dir: "data"
+train_file: "train.csv"
+valid_file: "valid.csv" 

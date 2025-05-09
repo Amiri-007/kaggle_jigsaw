@@ -1,0 +1,14 @@
+# Ultra-fast turbo config - uses tiny model, very small sample, and fewer steps
+model_name: distilbert-base-uncased
+max_len: 128
+max_head_len: 64
+batch_size: 16
+epochs: 1
+sample_frac: 0.05
+fp16: true
+turbo_mode: true
+loss_alpha: 0.1
+loss_beta: 1.0
+data_dir: "data"
+train_file: "train.csv"
+valid_file: "valid.csv" 
