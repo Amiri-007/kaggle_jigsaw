@@ -1,4 +1,4 @@
-.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev eda bias-aucs count-people
+.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev eda bias-aucs count-people audit audit-v2
 
 help:
 	@echo "Available targets:"
@@ -43,6 +43,19 @@ figures:
 figures-fast:
 eda:  ## run exploratory-data-analysis plots
 	python scripts/eda_identity.py --csv data/train.csv
+
+audit: ## Run accuracy + fairness audit (conf-matrix, AUCs, disparities)
+	python scripts/audit_accuracy_fairness.py \
+		--preds results/preds_distilbert_dev.csv \
+		--val   data/train.csv \
+		--thr   0.5
+
+audit-v2: ## selection-rate, demographic-parity, FPR/FNR disparity
+	python scripts/audit_fairness_v2.py \
+		--preds results/preds_distilbert_dev.csv \
+		--val   data/train.csv \
+		--thr   0.5 \
+		--majority white
 
 	@if [ -d "results" ]; then \
 		jupytext --to notebook notebooks/04_generate_figures.py -o notebooks/tmp_figs.ipynb; \
