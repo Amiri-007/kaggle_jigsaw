@@ -176,7 +176,8 @@ def train_epoch(
     dry_run: bool = False,
     dry_run_batches: int = 5,
     scaler: Optional[Any] = None,  # GradScaler for mixed precision
-    turbo_mode: bool = False
+    turbo_mode: bool = False,
+    total_epochs: int = 1,  # Added parameter for total epochs
 ) -> Dict[str, float]:
     """Train for one epoch"""
     model.train()
@@ -191,8 +192,12 @@ def train_epoch(
     
     start_time = time.time()
     
-    # Add progress bar
-    pbar = tqdm(train_loader, desc=f"Epoch {epoch}", disable=False)
+    # Calculate total batches and overall progress
+    total_batches = len(train_loader)
+    overall_progress = (epoch - 1) / total_epochs * 100
+    
+    # Add progress bar with enhanced information
+    pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{total_epochs} ({overall_progress:.1f}% complete)", disable=False)
     
     for batch_idx, batch in enumerate(pbar):
         # Stop early if dry run
@@ -370,8 +375,31 @@ def train_epoch(
         total_examples += len(targets)
         step += 1
         
+        # Calculate current progress including batch position
+        batch_progress = (batch_idx + 1) / total_batches
+        epoch_progress = ((epoch - 1) + batch_progress) / total_epochs
+        overall_percent = epoch_progress * 100
+        
+        # Estimate time remaining
+        elapsed_time = time.time() - start_time
+        time_per_batch = elapsed_time / (batch_idx + 1)
+        remaining_batches = total_batches - (batch_idx + 1)
+        remaining_epochs = total_epochs - epoch + (1 - batch_progress)
+        total_remaining_batches = remaining_batches + (remaining_epochs - (1 - batch_progress)) * total_batches
+        estimated_time_remaining = total_remaining_batches * time_per_batch
+        
+        # Format time remaining as hours:minutes:seconds
+        hours, remainder = divmod(estimated_time_remaining, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        time_remaining_str = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
+        
         # Update progress bar
-        pbar.set_postfix({'loss': loss.item(), 'avg_loss': total_loss / total_examples})
+        pbar.set_postfix({
+            'loss': f"{loss.item():.4f}",
+            'avg_loss': f"{total_loss / total_examples:.4f}",
+            'progress': f"{overall_percent:.1f}%",
+            'ETA': time_remaining_str
+        })
         
         # In turbo mode, break early (train on fewer batches)
         if turbo_mode and batch_idx >= (100 if model_type == 'lstm_caps' else 50):
@@ -383,7 +411,8 @@ def train_epoch(
     metrics = {
         'loss': epoch_loss,
         'epoch': epoch,
-        'steps': step
+        'steps': step,
+        'progress': (epoch / total_epochs) * 100
     }
     
     duration = time.time() - start_time
@@ -412,7 +441,10 @@ def validate(
     # Loss function
     loss_fn = nn.BCEWithLogitsLoss()
     
-    # Add progress bar
+    start_time = time.time()
+    total_batches = len(valid_loader)
+    
+    # Add progress bar with enhanced information
     pbar = tqdm(valid_loader, desc="Validation", disable=False)
     
     with torch.no_grad():
@@ -473,8 +505,24 @@ def validate(
             all_predictions.extend(probs.cpu().numpy().flatten().tolist())
             all_targets.extend(targets.cpu().numpy().flatten().tolist())
             
+            # Calculate progress and time estimate
+            elapsed_time = time.time() - start_time
+            time_per_batch = elapsed_time / (batch_idx + 1)
+            remaining_batches = total_batches - (batch_idx + 1)
+            estimated_time_remaining = remaining_batches * time_per_batch
+            
+            # Format time remaining
+            minutes, seconds = divmod(estimated_time_remaining, 60)
+            time_remaining_str = f"{int(minutes):02d}:{int(seconds):02d}"
+            
             # Update progress bar
-            pbar.set_postfix({'loss': loss.item(), 'avg_loss': total_loss / total_examples})
+            progress_pct = (batch_idx + 1) / total_batches * 100
+            pbar.set_postfix({
+                'loss': f"{loss.item():.4f}", 
+                'avg_loss': f"{total_loss / total_examples:.4f}", 
+                'progress': f"{progress_pct:.1f}%",
+                'ETA': time_remaining_str
+            })
     
     # Calculate average loss and AUC
     avg_loss = total_loss / total_examples
@@ -490,6 +538,9 @@ def validate(
         'val_loss': avg_loss,
         'val_auc': auc
     }
+    
+    duration = time.time() - start_time
+    logger.info(f"Validation completed in {duration:.2f}s. Metrics: {metrics}")
     
     return metrics
 
@@ -668,6 +719,17 @@ def train(config: Dict[str, Any], pseudo_label_path: Optional[str] = None, resum
     num_epochs = config.get('num_epochs', 3)
     logger.info(f"Starting training from epoch {start_epoch}/{num_epochs}")
     
+    # Calculate total training steps for progress tracking
+    total_samples = len(train_df)
+    batch_size = config.get('batch_size', 32)
+    total_batches_per_epoch = total_samples // batch_size + (1 if total_samples % batch_size > 0 else 0)
+    total_batches = total_batches_per_epoch * (num_epochs - start_epoch + 1)
+    
+    logger.info(f"Total training samples: {total_samples}")
+    logger.info(f"Batch size: {batch_size}")
+    logger.info(f"Total batches per epoch: {total_batches_per_epoch}")
+    logger.info(f"Total batches for training: {total_batches}")
+    
     for epoch in range(start_epoch, num_epochs + 1):
         logger.info(f"Starting epoch {epoch}/{num_epochs}")
         
@@ -688,7 +750,8 @@ def train(config: Dict[str, Any], pseudo_label_path: Optional[str] = None, resum
             dry_run=config.get('dry_run', False),
             dry_run_batches=config.get('dry_run_batches', 5),
             scaler=scaler,
-            turbo_mode=turbo_mode
+            turbo_mode=turbo_mode,
+            total_epochs=num_epochs
         )
         
         # Validate
@@ -706,7 +769,8 @@ def train(config: Dict[str, Any], pseudo_label_path: Optional[str] = None, resum
         metrics = {**train_metrics, **val_metrics}
         
         # Log metrics
-        logger.info(f"Epoch {epoch} results: {metrics}")
+        logger.info(f"Epoch {epoch}/{num_epochs} results: {metrics}")
+        logger.info(f"Training progress: {(epoch / num_epochs * 100):.1f}% complete")
         
         # Save checkpoint if validation AUC improved
         if val_metrics['val_auc'] > best_val_auc:
