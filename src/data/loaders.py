@@ -51,7 +51,7 @@ class ToxicDataset(Dataset):
         # ----------------------------------------------------
         tok_cache = getattr(self, "token_cache", None)
         if tok_cache is None and self.cache_dir:
-            cache_name = f"{self.tokenizer.name_or_path.replace('/','_')}_{self.max_length}.pt"
+            cache_name = f"{self.tokenizer.name_or_path.replace('/','_')}_{self.max_length}.pt" if hasattr(self.tokenizer, "name_or_path") else f"basic_tokenizer_{self.max_length}.pt"
             cache_path = pathlib.Path(self.cache_dir) / cache_name
             if cache_path.exists():
                 self.token_cache = torch.load(cache_path, map_location="cpu")
@@ -64,14 +64,29 @@ class ToxicDataset(Dataset):
             text = row[self.text_col]
             if not isinstance(text, str):
                 text = "" if pd.isna(text) else str(text)
-            enc = self.tokenizer(
-                text,
-                max_length=self.max_length,
-                truncation=True,
-                padding="max_length",
-                return_tensors="pt",
-            )
-            input_ids, attn_mask = enc["input_ids"][0], enc["attention_mask"][0]
+                
+            # Handle different tokenizer types
+            if hasattr(self.tokenizer, 'encode'):
+                # BasicTokenizer case
+                token_ids = self.tokenizer.encode(
+                    text,
+                    max_length=self.max_length,
+                    padding=True,
+                    truncation=True
+                )
+                input_ids = torch.tensor(token_ids, dtype=torch.long)
+                # For LSTM, attention mask is all ones for non-padding tokens
+                attn_mask = (input_ids != self.tokenizer.pad_token_id).float()
+            else:
+                # HuggingFace tokenizer case
+                enc = self.tokenizer(
+                    text,
+                    max_length=self.max_length,
+                    truncation=True,
+                    padding="max_length",
+                    return_tensors="pt",
+                )
+                input_ids, attn_mask = enc["input_ids"][0], enc["attention_mask"][0]
         
         # Get identity column values
         identity_values = []
