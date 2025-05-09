@@ -1,4 +1,4 @@
-.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev eda bias-aucs count-people audit audit-v2
+.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev eda bias-aucs count-people audit audit-v2 competition-score check
 
 help:
 	@echo "Available targets:"
@@ -13,6 +13,10 @@ help:
 	@echo "  eda         - Run exploratory data analysis on identity distribution"
 	@echo "  bias-aucs   - Calculate bias AUCs (AUC, BPSN, BNSP) for each identity subgroup"
 	@echo "  count-people - Count comment rows and unique annotators"
+	@echo "  audit       - Run fairness audit (old version)"
+	@echo "  audit-v2    - Run fairness audit v2 (selection rate, DP, FPR/FNR)"
+	@echo "  competition-score - Calculate official Kaggle competition score"
+	@echo "  check       - Run compliance checker"
 	@echo "  blend       - Blend multiple model predictions"
 	@echo "  test        - Run tests"
 	@echo "  clean       - Clean output directories"
@@ -126,3 +130,17 @@ count-people:
 
 bias-aucs:  ## Calculate bias AUCs (AUC, BPSN AUC, BNSP AUC) for each identity subgroup
 	python scripts/bias_auc_metrics.py --validation-csv data/valid.csv --predictions-csv output/preds/simplest_preds.csv --model-name simplest_model --pred-column prediction
+
+competition-score: ## Calculate official Kaggle competition score
+	@if [ -z "$(PREDS)" ]; then \
+		echo "Error: PREDS is required. Usage: make competition-score PREDS=results/preds_distilbert_dev.csv VAL=data/valid.csv"; \
+		exit 1; \
+	fi
+	@if [ -z "$(VAL)" ]; then \
+		echo "Error: VAL is required. Usage: make competition-score PREDS=results/preds_distilbert_dev.csv VAL=data/valid.csv"; \
+		exit 1; \
+	fi
+	python scripts/compute_competition_score.py --csv $(PREDS) --val-data $(VAL) --out results/competition_score.json
+
+check: ## Run compliance checker
+	python scripts/check_compliance.py
