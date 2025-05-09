@@ -1,4 +1,4 @@
-.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run
+.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast
 
 help:
 	@echo "Available targets:"
@@ -8,6 +8,7 @@ help:
 	@echo "  predict     - Generate predictions"
 	@echo "  figures     - Generate fairness figures"
 	@echo "  figures-fast - Generate fairness figures in fast mode"
+	@echo "  explainers-fast - Run SHAP + SHARP explainer on dev model"
 	@echo "  blend       - Blend multiple model predictions"
 	@echo "  test        - Run tests"
 	@echo "  clean       - Clean output directories"
@@ -43,6 +44,9 @@ figures-fast:
 		echo "No metrics files found in results/ directory. Run predictions and write_metrics.py first."; \
 		exit 1; \
 	fi
+
+explainers-fast:
+	python scripts/run_explainers_shap.py --sample 2000
 
 blend:
 	@if [ -z "$(GROUND_TRUTH)" ]; then \
