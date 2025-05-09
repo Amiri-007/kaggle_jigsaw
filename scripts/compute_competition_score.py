@@ -65,16 +65,19 @@ def bias_auc(df: pd.DataFrame, subgroup: str, pred_col: str, label_col: str):
     """
     subgroup_mask = df[subgroup] >= .5
     
+    # Convert label to binary if needed
+    y_true = (df[label_col] >= 0.5).astype(int).values
+    y_pred = df[pred_col].values
+    
     # Calculate subgroup AUC
     try:
-        auc_subgroup = roc_auc_score(df.loc[subgroup_mask, label_col],
-                                     df.loc[subgroup_mask, pred_col])
+        auc_subgroup = roc_auc_score(y_true[subgroup_mask], y_pred[subgroup_mask])
     except:
         auc_subgroup = np.nan
     
     # Calculate BPSN and BNSP AUCs using our fairness module's implementation
-    auc_bpsn = bpsn_auc(df[label_col].values, df[pred_col].values, subgroup_mask.values)
-    auc_bnsp = bnsp_auc(df[label_col].values, df[pred_col].values, subgroup_mask.values)
+    auc_bpsn = bpsn_auc(y_true, y_pred, subgroup_mask.values)
+    auc_bnsp = bnsp_auc(y_true, y_pred, subgroup_mask.values)
     
     return auc_subgroup, auc_bpsn, auc_bnsp
 
@@ -106,7 +109,9 @@ def compute_final_metric(df: pd.DataFrame,
         identity_cols = [col for col in identity_cols if col in df.columns]
     
     # 1) Overall AUC
-    overall_auc = roc_auc_score(df[label_col], df[pred_col])
+    # Make sure labels are binary for AUC computation
+    y_true_binary = (df[label_col] >= 0.5).astype(int)
+    overall_auc = roc_auc_score(y_true_binary, df[pred_col])
 
     # 2) Bias AUCs for each identity
     subgroup_aucs, bpsn_aucs, bnsp_aucs = [], [], []
