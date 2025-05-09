@@ -8,6 +8,8 @@ Exploratory analysis for Jigsaw toxicity dataset
 Outputs: figs/eda/*  +  output/eda_summary.csv
 """
 import argparse, pathlib, pandas as pd, numpy as np, seaborn as sns, matplotlib.pyplot as plt
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Add project root to path
 from fairness.metrics_v2 import list_identity_columns   # already exists
 
 sns.set_style("whitegrid")
