@@ -1,0 +1,151 @@
+#!/usr/bin/env python
+"""
+Calculate bias AUCs (AUC, BPSN AUC, BNSP AUC) for each identity subgroup
+and create a side-by-side visualization.
+
+Outputs: figs/bias_aucs/bias_aucs_comparison.png
+"""
+import argparse, pathlib, pandas as pd, numpy as np, seaborn as sns, matplotlib.pyplot as plt
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Add project root to path
+from fairness.metrics_v2 import list_identity_columns, compute_bias_metrics_for_model
+
+sns.set_style("whitegrid")
+sns.set_palette("viridis")
+plt.rcParams.update({'font.size': 10})
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--validation-csv", default="data/valid.csv", 
+                   help="Validation dataset with identity and target columns")
+    ap.add_argument("--predictions-csv", default="output/preds/bert_headtail.csv",
+                   help="Model predictions CSV file with 'pred' column")
+    ap.add_argument("--model-name", default="bert_headtail",
+                   help="Name of the model for plot title")
+    ap.add_argument("--out-dir", default="figs/bias_aucs",
+                   help="Output directory for visualizations")
+    args = ap.parse_args()
+
+    # Create output directory
+    out_d = pathlib.Path(args.out_dir)
+    out_d.mkdir(parents=True, exist_ok=True)
+    
+    # Load data
+    print(f"🔹 Loading validation data and predictions from {args.predictions_csv}")
+    df_valid = pd.read_csv(args.validation_csv)
+    df_preds = pd.read_csv(args.predictions_csv)
+    
+    # Ensure predictions are in the same order as validation data
+    if 'id' in df_valid.columns and 'id' in df_preds.columns:
+        # If we have IDs, merge on them
+        df = df_valid.merge(df_preds[['id', 'pred']], on='id', how='inner')
+        print(f"Merged {len(df)} rows using 'id' column")
+    else:
+        # Otherwise assume they're already aligned
+        df = df_valid.copy()
+        df['pred'] = df_preds['pred'].values
+        print(f"Aligned {len(df)} rows (no merge)")
+    
+    # Get identity columns
+    identity_columns = list_identity_columns(df)
+    
+    # Compute bias metrics
+    print("🔹 Computing bias metrics for each subgroup")
+    bias_metrics = compute_bias_metrics_for_model(df, identity_columns, 'target', 'pred')
+    
+    # Create a dataframe for plotting
+    plot_data = []
+    for subgroup in bias_metrics.keys():
+        if subgroup == 'overall':
+            continue
+        
+        # Extract metrics
+        metrics = bias_metrics[subgroup]
+        auc = metrics['subgroup_auc']
+        bpsn_auc = metrics['bpsn_auc']
+        bnsp_auc = metrics['bnsp_auc']
+        
+        # Add to plot data
+        plot_data.extend([
+            {'subgroup': subgroup, 'metric': 'Subgroup AUC', 'value': auc},
+            {'subgroup': subgroup, 'metric': 'BPSN AUC', 'value': bpsn_auc},
+            {'subgroup': subgroup, 'metric': 'BNSP AUC', 'value': bnsp_auc}
+        ])
+    
+    # Convert to dataframe
+    plot_df = pd.DataFrame(plot_data)
+    
+    # Calculate counts for each subgroup
+    counts = {sg: (df[sg] >= 0.5).sum() for sg in identity_columns}
+    
+    # Sort subgroups by count (descending)
+    sorted_subgroups = sorted(counts.keys(), key=lambda x: counts[x], reverse=True)
+    
+    # Filter top N subgroups to keep plot readable
+    top_n = 15
+    top_subgroups = sorted_subgroups[:top_n]
+    plot_df = plot_df[plot_df['subgroup'].isin(top_subgroups)]
+    
+    # Order subgroups by count
+    plot_df['subgroup'] = pd.Categorical(plot_df['subgroup'], categories=top_subgroups, ordered=True)
+    
+    # Define colors for metrics
+    colors = {"Subgroup AUC": "#3182bd", "BPSN AUC": "#31a354", "BNSP AUC": "#de2d26"}
+    
+    # Create side-by-side bar plot
+    plt.figure(figsize=(12, 8))
+    g = sns.barplot(
+        data=plot_df,
+        x='subgroup',
+        y='value',
+        hue='metric',
+        palette=colors
+    )
+    
+    # Add overall AUC reference line
+    overall_auc = bias_metrics['overall']['auc']
+    plt.axhline(y=overall_auc, color='black', linestyle='--', alpha=0.7, 
+                label=f'Overall AUC: {overall_auc:.3f}')
+    
+    # Add counts to x-labels
+    plt.xticks(rotation=45, ha='right')
+    labels = [f"{sg}\n(n={counts[sg]:,})" for sg in top_subgroups]
+    g.set_xticklabels(labels)
+    
+    plt.title(f"Bias AUCs by Identity Subgroup for {args.model_name}")
+    plt.xlabel("")
+    plt.ylabel("AUC Score")
+    plt.ylim(0.5, 1.0)  # AUC is typically in range [0.5, 1.0]
+    plt.legend(title="", loc="lower right")
+    plt.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
+    
+    # Save figure
+    out_path = out_d / f"bias_aucs_comparison.png"
+    plt.savefig(out_path, dpi=300)
+    print(f"✅ Bias AUCs plot saved to {out_path}")
+    
+    # Save data as CSV
+    csv_path = out_d / f"bias_aucs_data.csv"
+    plot_df.to_csv(csv_path, index=False)
+    print(f"✅ Bias AUCs data saved to {csv_path}")
+    
+    # Print a summary of metrics
+    print("\n===== BIAS METRICS SUMMARY =====")
+    overall = bias_metrics['overall']
+    print(f"Overall AUC: {overall['auc']:.4f}")
+    print(f"Worst Subgroup AUC: {overall['worst_auc']:.4f} ({overall['worst_auc_identity']})")
+    
+    # Show min BPSN and BNSP metrics
+    min_bpsn = min(bias_metrics[sg]['bpsn_auc'] for sg in top_subgroups)
+    min_bpsn_sg = [sg for sg in top_subgroups if bias_metrics[sg]['bpsn_auc'] == min_bpsn][0]
+    
+    min_bnsp = min(bias_metrics[sg]['bnsp_auc'] for sg in top_subgroups)
+    min_bnsp_sg = [sg for sg in top_subgroups if bias_metrics[sg]['bnsp_auc'] == min_bnsp][0]
+    
+    print(f"Worst BPSN AUC: {min_bpsn:.4f} ({min_bpsn_sg})")
+    print(f"Worst BNSP AUC: {min_bnsp:.4f} ({min_bnsp_sg})")
+    print("==============================")
+
+if __name__ == "__main__":
+    main() 
