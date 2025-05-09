@@ -1,4 +1,4 @@
-.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev eda bias-aucs
+.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev eda bias-aucs count-people
 
 help:
 	@echo "Available targets:"
@@ -12,6 +12,7 @@ help:
 	@echo "  explainers-dev  - SHAP+SHARP on dev DistilBERT checkpoint (2k rows)"
 	@echo "  eda         - Run exploratory data analysis on identity distribution"
 	@echo "  bias-aucs   - Calculate bias AUCs (AUC, BPSN, BNSP) for each identity subgroup"
+	@echo "  count-people - Count comment rows and unique annotators"
 	@echo "  blend       - Blend multiple model predictions"
 	@echo "  test        - Run tests"
 	@echo "  clean       - Clean output directories"
@@ -104,6 +105,11 @@ turbo-run:  ## Ultra-fast mode: 5% subset, progress bars, ~5 min
 	python -m src.blend_optuna --pred-dir output/preds --ground-truth data/valid.csv --n-trials 10 --out-csv output/preds/blend_turbo.csv
 	python scripts/write_metrics.py --pred output/preds/blend_turbo.csv --model-name blend_turbo
 	make figures-fast 
+
+count-people:
+	python scripts/count_people.py \
+		--preds results/preds_distilbert_dev.csv \
+		--train data/train.csv
 
 bias-aucs:  ## Calculate bias AUCs (AUC, BPSN AUC, BNSP AUC) for each identity subgroup
 	python scripts/bias_auc_metrics.py --validation-csv data/valid.csv --predictions-csv output/preds/simplest_preds.csv --model-name simplest_model --pred-column prediction
