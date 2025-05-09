@@ -4,7 +4,7 @@ model_name: "lstm_caps"
 
 # Data configuration
 data_dir: "data"
-train_file: "train_folds.csv"
+train_file: "train.csv"
 valid_file: "valid.csv"
 test_file: "test_public_expanded.csv"
 text_col: "comment_text"

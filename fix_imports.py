@@ -2,48 +2,29 @@
 # -*- coding: utf-8 -*-
 
 """
-Quick script to run BERT training in dry-run mode
-by fixing the import issues in src/train.py
+Script to run the full RDS fairness audit pipeline
+by fixing the import issues in src/train.py and other modules
 """
 
 import os
 import sys
 import pandas as pd
 import numpy as np
+import argparse
+import time
 
 # Add current directory to Python path
 sys.path.append(os.getcwd())
 
-# Prepare data directory
-data_dir = "data"
-if not os.path.exists(os.path.join(data_dir, "valid.csv")):
-    print("Creating validation file from train.csv...")
-    if os.path.exists(os.path.join(data_dir, "train.csv")):
-        # Create a small validation set from train.csv
-        df = pd.read_csv(os.path.join(data_dir, "train.csv"))
-        # Set random seed for reproducibility
-        np.random.seed(42)
-        # Split 95/5
-        valid_indices = np.random.choice(df.index, size=int(len(df) * 0.05), replace=False)
-        valid_df = df.loc[valid_indices]
-        valid_df.to_csv(os.path.join(data_dir, "valid.csv"), index=False)
-        print(f"Created validation file with {len(valid_df)} samples")
-
-# Update config to use train.csv instead of train_folds.csv
-import yaml
-bert_config_path = os.path.join("configs", "bert_headtail.yaml")
-with open(bert_config_path, 'r') as f:
-    config = yaml.safe_load(f)
-    
-# Modify config to use existing files
-config["train_file"] = "train.csv"
-config["valid_file"] = "valid.csv"
-
-# Save modified config
-with open(bert_config_path, 'w') as f:
-    yaml.dump(config, f, default_flow_style=False)
-
-print(f"Updated {bert_config_path} to use train.csv and valid.csv")
+# Parse arguments
+parser = argparse.ArgumentParser(description='Run the full RDS pipeline')
+parser.add_argument('--skip-bert', action='store_true', help='Skip BERT training')
+parser.add_argument('--skip-lstm', action='store_true', help='Skip LSTM training')
+parser.add_argument('--skip-gpt2', action='store_true', help='Skip GPT-2 training')
+parser.add_argument('--skip-blend', action='store_true', help='Skip model blending')
+parser.add_argument('--dry-run', action='store_true', help='Run in dry-run mode')
+parser.add_argument('--fp16', action='store_true', help='Use mixed precision (FP16)')
+args = parser.parse_args()
 
 # Import modules directly from src
 from src.data import create_dataloaders, apply_negative_downsampling, get_sample_weights
@@ -61,27 +42,110 @@ data_module.apply_negative_downsampling = apply_negative_downsampling
 data_module.get_sample_weights = get_sample_weights
 sys.modules['data'] = data_module
 
-# Fix models imports
+# Fix model imports
 models_module = types.ModuleType('models')
-sys.modules['models'] = models_module
-
-# Add submodules
 lstm_caps_module = types.ModuleType('models.lstm_caps')
 lstm_caps_module.create_lstm_capsule_model = create_lstm_capsule_model
+sys.modules['models'] = models_module
 sys.modules['models.lstm_caps'] = lstm_caps_module
 
-bert_module = types.ModuleType('models.bert_headtail')
-bert_module.BertHeadTailForSequenceClassification = BertHeadTailForSequenceClassification
-sys.modules['models.bert_headtail'] = bert_module
+# Prepare data directory
+data_dir = "data"
 
-gpt2_module = types.ModuleType('models.gpt2_headtail')
-gpt2_module.GPT2HeadTailForSequenceClassification = GPT2HeadTailForSequenceClassification
-sys.modules['models.gpt2_headtail'] = gpt2_module
+# Fix config files to use train.csv instead of train_folds.csv
+for config_file in ["configs/bert_headtail.yaml", "configs/lstm_caps.yaml", "configs/gpt2_headtail.yaml"]:
+    with open(config_file, 'r') as f:
+        content = f.read()
+    
+    if "train_folds.csv" in content:
+        content = content.replace("train_folds.csv", "train.csv")
+        with open(config_file, 'w') as f:
+            f.write(content)
+        print(f"Updated {config_file} to use train.csv and valid.csv")
 
-# Now run the training
-from src.train import main
+# Initialize directories
+os.makedirs("output/checkpoints", exist_ok=True)
+os.makedirs("output/preds", exist_ok=True)
+os.makedirs("results", exist_ok=True)
+os.makedirs("figs", exist_ok=True)
+
+# Set common args
+common_args = []
+if args.dry_run:
+    common_args.append("--dry_run")
+if args.fp16:
+    common_args.append("--fp16")
+
+def run_command(cmd):
+    """Run a command and print output in real-time"""
+    print(f"\n{'='*80}\nRunning command: {cmd}\n{'='*80}\n")
+    import subprocess
+    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    
+    # Print output in real-time
+    while True:
+        output = process.stdout.readline()
+        if output == '' and process.poll() is not None:
+            break
+        if output:
+            print(output.strip())
+    
+    return process.poll()
+
+# 1. Train BERT head-tail model
+if not args.skip_bert:
+    cmd = f"python -m src.train --model bert_headtail --config configs/bert_headtail.yaml --epochs 2 --save-checkpoint {' '.join(common_args)}"
+    run_command(cmd)
+    
+    # Generate pseudo-labels
+    cmd = f"python scripts/pseudo_label.py --base-model output/checkpoints/bert_headtail_fold0.pth --unlabeled-csv data/train.csv --out-csv output/pseudo_bert.csv"
+    run_command(cmd)
+
+# 2. Train LSTM-Capsule model
+if not args.skip_lstm:
+    cmd = f"python -m src.train --model lstm_caps --config configs/lstm_caps.yaml --epochs 6 {' '.join(common_args)}"
+    run_command(cmd)
+
+# 3. Train GPT-2 head-tail model
+if not args.skip_gpt2:
+    cmd = f"python -m src.train --model gpt2_headtail --config configs/gpt2_headtail.yaml --epochs 2 {' '.join(common_args)}"
+    run_command(cmd)
+
+# 4. Blend models with Optuna
+if not args.skip_blend:
+    cmd = f"python -m src.blend_optuna --pred-dir output/preds --ground-truth data/valid.csv --n-trials 200 --out-csv output/preds/blend_ensemble.csv"
+    run_command(cmd)
+    
+    # Generate metrics
+    cmd = f"python scripts/write_metrics.py --predictions output/preds/blend_ensemble.csv --model-name blend_ensemble"
+    run_command(cmd)
+    
+    # Generate figures
+    cmd = f"python notebooks/04_generate_figures.py"
+    run_command(cmd)
+    
+    # Run explainers
+    cmd = f"python scripts/run_explainers.py --model-path output/checkpoints/bert_headtail_fold0.pth --n-samples 500"
+    run_command(cmd)
+
+# Print summary
+if os.path.exists("results/summary.tsv"):
+    print("\n\nFinal metrics summary:\n")
+    with open("results/summary.tsv", "r") as f:
+        print(f.read())
+else:
+    print("\n\nNo summary.tsv found - make sure the pipeline completed successfully")
+
+if not args.dry_run and not args.skip_blend:
+    print("\n\nFull pipeline completed successfully!")
+    print(f"Checkpoints saved to: output/checkpoints/")
+    print(f"Predictions saved to: output/preds/")
+    print(f"Metrics saved to: results/")
+    print(f"Figures saved to: figs/")
+else:
+    print("\n\nPartial pipeline completed.")
 
 if __name__ == "__main__":
-    # Set dry run argument
-    sys.argv = ["train.py", "--model", "bert_headtail", "--dry_run"]
-    main() 
+    if len(sys.argv) == 1:  # No arguments provided
+        # Run in FP16 mode by default
+        sys.argv.append("--fp16") 

@@ -1,8 +1,10 @@
 annotator_weight: true
 apply_downsampling: true
 apply_weights: true
-batch_size: 32
+batch_size: 16
 data_dir: data
+fp16: true
+# resume_checkpoint: "output/checkpoints/bert_headtail_fold0.pth"
 hidden_size: 768
 identity_cols:
 - male
