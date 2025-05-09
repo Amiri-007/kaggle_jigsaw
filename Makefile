@@ -1,4 +1,4 @@
-.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast
+.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev
 
 help:
 	@echo "Available targets:"
@@ -9,6 +9,7 @@ help:
 	@echo "  figures     - Generate fairness figures"
 	@echo "  figures-fast - Generate fairness figures in fast mode"
 	@echo "  explainers-fast - Run SHAP + SHARP explainer on dev model"
+	@echo "  explainers-dev  - SHAP+SHARP on dev DistilBERT checkpoint (2k rows)"
 	@echo "  blend       - Blend multiple model predictions"
 	@echo "  test        - Run tests"
 	@echo "  clean       - Clean output directories"
@@ -47,6 +48,11 @@ figures-fast:
 
 explainers-fast:
 	python scripts/run_explainers_shap.py --sample 2000
+
+explainers-dev:   ## SHAP+SHARP on dev DistilBERT checkpoint (2 k rows)
+	python scripts/explainers_distilbert.py \
+	       --ckpt output/checkpoints/distilbert_headtail_fold0.pth \
+	       --sample 2000
 
 blend:
 	@if [ -z "$(GROUND_TRUTH)" ]; then \
