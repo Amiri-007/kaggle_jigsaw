@@ -1,0 +1,18 @@
+# Larger sample turbo config with fixed tensor size handling
+model_name: distilbert-base-uncased
+max_len: 128  # Fixed length for all sequences
+max_head_len: 64
+batch_size: 8  # Reduced batch size to handle larger sequences
+epochs: 1
+sample_frac: 0.08  # Slightly larger than standard turbo
+fp16: true
+turbo_mode: true
+loss_alpha: 0.1
+loss_beta: 1.0
+data_dir: "data"
+train_file: "train.csv"
+valid_file: "valid.csv"
+output_dir: "output/large_run"  # Custom output directory for this run
+truncation: true  # Ensure consistent sequence lengths
+padding: "max_length"  # Ensure all sequences are padded to the same length
+collate_fn: "default"  # Use the default collate function 

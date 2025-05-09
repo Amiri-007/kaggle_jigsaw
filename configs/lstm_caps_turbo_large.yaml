@@ -1,0 +1,15 @@
+# Larger sample turbo config with fixed tensor size handling
+max_len: 128  # Fixed length for all sequences
+batch_size: 64  # Further reduced batch size to prevent memory issues
+epochs: 1
+max_features: 50000
+device: cuda
+sample_frac: 0.08  # Slightly larger than standard turbo
+turbo_mode: true
+data_dir: "data"
+train_file: "train.csv"
+valid_file: "valid.csv"
+output_dir: "output/large_run"  # Custom output directory for this run
+truncation: true  # Ensure consistent sequence lengths
+padding: "max_length"  # Ensure all sequences are padded to the same length
+collate_fn: "default"  # Use the default collate function 

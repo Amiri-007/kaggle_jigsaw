@@ -1,6 +1,40 @@
 # RDS Project: Deep Fairness for Toxicity Classification
 
-This project provides a modern implementation for toxicity classification with deep learning models, focusing on bias reduction and fairness evaluation across demographic groups. It builds upon the [Jigsaw Unintended Bias in Toxicity Classification](https://www.kaggle.com/c/jigsaw-unintended-bias-in-toxicity-classification) dataset to evaluate potential biases in machine learning models across demographic groups.
+This project provides a modern implementation for toxicity classification with deep learning models, focusing on bias reduction, fairness evaluation across demographic groups, and model explainability using SHAP. It builds upon the [Jigsaw Unintended Bias in Toxicity Classification](https://www.kaggle.com/c/jigsaw-unintended-bias-in-toxicity-classification) dataset.
+
+## Project Structure
+
+The codebase has been reorganized for better clarity and maintainability. See [DIRECTORY_STRUCTURE.md](DIRECTORY_STRUCTURE.md) for the complete organization.
+
+```
+.
+├── src/                     # Core source code
+│   ├── train.py             # Training pipeline implementation
+│   ├── predict.py           # Prediction script
+│   ├── blend_optuna.py      # Model blending optimization
+│   ├── data/                # Data loading and processing
+│   ├── models/              # Model implementations
+│   │   ├── lstm_caps.py     # LSTM-Capsule model
+│   │   ├── bert_headtail.py # BERT head-tail model
+│   │   └── gpt2_headtail.py # GPT-2 head-tail model
+├── configs/                 # Configuration files for different models
+├── data/                    # Dataset files (download from Kaggle)
+├── pipelines/               # Pipeline execution scripts
+│   ├── run_turbo.ps1        # Main turbo model pipeline
+│   └── run_turbo_large.ps1  # Large dataset turbo pipeline
+├── explainers/              # Model explainability tools
+│   ├── run_simplified_explainer.py  # Token attribution analysis
+│   └── generate_mock_shap.py        # SHAP value generation
+├── predictions/             # Custom prediction scripts
+│   ├── run_custom_predict.py        # Prediction script
+│   └── large_predict.py             # Prediction for larger datasets
+├── output/                  # Model outputs (checkpoints, predictions)
+└── archive/                 # Archived scripts and tools
+    ├── analysis/            # Analysis tools
+    ├── fairness/            # Fairness metrics and tools
+    ├── scripts/             # Utility scripts
+    └── misc/                # Miscellaneous utilities
+```
 
 ## Installation
 
@@ -10,211 +44,107 @@ git clone https://github.com/Amiri-007/kaggle_jigsaw.git
 cd kaggle_jigsaw
 
 # Create virtual environment and activate it
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv_new && .\.venv_new\Scripts\activate.ps1  # For Windows
+# OR
+python -m venv .venv && source .venv/bin/activate  # For Linux/Mac
 
 # Install dependencies
 pip install -r requirements.txt
-
-# Run the full pipeline (training, blending, fairness metrics, explanations)
-make full-run
-
-# For quick testing, run in dry-run mode
-make full-run ARGS="--dry-run"
 ```
 
-## Quick Start
+## Quick Start: Turbo Mode
+
+The project implements a "turbo mode" for rapid development and testing, which uses smaller models and data samples:
 
 ```bash
-# Train a model (BERT Head-Tail)
-python -m src.train --model bert_headtail
-
-# Run quick training test
-python -m src.train --model bert_headtail --dry_run
-
-# Full training with pseudo-labels + annotator weighting
-python -m src.train --model bert_headtail --config configs/bert_headtail.yaml
-
-# Generate pseudo-labels from trained model
-python scripts/pseudo_label.py --base-model output/bert_headtail_fold0.pth --unlabeled-csv data/train.csv --out-csv output/pseudo_bert.csv
-
-# Train with pseudo-labels (model improvement cycle)
-python -m src.train --model bert_headtail --config configs/bert_headtail.yaml --pseudo-label-csv output/pseudo_bert.csv
-
-# Generate predictions on test data
-python -m src.predict --checkpoint_path output/bert_headtail_fold0.pth --test_file data/test_public_expanded.csv
-
-# Generate fairness metrics and visualizations
-python scripts/write_metrics.py --predictions output/preds/bert_headtail.csv
-make figures
+# Run the full turbo pipeline
+.\pipelines\run_turbo.ps1  # Windows PowerShell
 ```
 
-## Optional: Pre-Fine-Tuning on Old Data
+### Turbo Pipeline Steps
 
-This step is optional but can improve model performance (requires ~2h on an A100 GPU):
+The turbo mode runs the complete pipeline with the following steps:
+
+1. **DistilBERT Training**: Trains a lightweight DistilBERT model on a 5% sample of the data
+   ```
+   python -m src.train --model bert_headtail --config configs/bert_headtail_turbo.yaml --fp16 --turbo
+   ```
+
+2. **LSTM-Capsule Training**: Trains an LSTM-Capsule model on the same data sample
+   ```
+   python -m src.train --model lstm_caps --config configs/lstm_caps_turbo.yaml --turbo
+   ```
+   
+3. **GPT-2 Training**: Trains a GPT-2 model in the same configuration
+   ```
+   python -m src.train --model gpt2_headtail --config configs/gpt2_headtail_turbo.yaml --fp16 --turbo
+   ```
+
+4. **Model Blending**: Uses Optuna to find optimal model weights
+   ```
+   python -m src.blend_optuna --pred-dir output/preds --ground-truth data/valid.csv --n-trials 10
+   ```
+
+5. **Fairness Metrics**: Calculates comprehensive fairness metrics
+   ```
+   python scripts/write_metrics.py --pred output/preds/blend_turbo.csv --model-name blend_turbo
+   ```
+
+6. **Visualization**: Generates figures for model performance and fairness
+   ```
+   jupyter nbconvert --execute notebooks/tmp_figs.ipynb --to html
+   ```
+
+### Turbo Configuration
+
+The turbo mode uses specialized configurations:
+
+- **bert_headtail_turbo.yaml**: Uses `distilbert-base-uncased`, 5% data sample, FP16 precision
+- **lstm_caps_turbo.yaml**: Uses smaller embedding dimensions and fewer epochs
+- **gpt2_headtail_turbo.yaml**: Uses `distilgpt2` with reduced sequence length
+
+## Model Explainability
+
+We've implemented two approaches for model interpretability:
+
+1. **SHAP-based explainer**: Implements SHapley Additive exPlanations to interpret model predictions
+   ```bash
+   python explainers/run_simplified_explainer.py --ckpt output/checkpoints/distilbert_headtail_fold0.pth
+   ```
+
+2. **Simplified token attribution**: Uses occlusion masking to identify important tokens
+   ```bash
+   python explainers/generate_mock_shap.py --model_path output/checkpoints/distilbert_headtail_fold0.pth
+   ```
+
+These explainers generate visualizations including:
+- Token importance charts
+- Waterfall plots showing token contributions
+- Heatmaps of token influence
+
+## Large Dataset Pipeline
+
+For running on larger datasets:
 
 ```bash
-# Pre-finetune BERT on 2018 Jigsaw Toxic Comment dataset
-python scripts/pre_finetune_old.py --model_name bert-base-uncased --mode classification --num_epochs 1
+# Run the large dataset pipeline (8% vs 5% in original turbo mode)
+.\pipelines\run_turbo_large.ps1
 ```
 
-## Makefile Commands
+For custom predictions on large datasets:
 
 ```bash
-# Show help
-make help
-
-# Train a model
-make train
-
-# Generate predictions
-make predict CHECKPOINT=output/bert_headtail_fold0.pth
-
-# Generate fairness figures
-make figures
-
-# Blend multiple model predictions
-make blend GROUND_TRUTH=data/valid.csv
+# Run custom predictions using existing model checkpoint
+python predictions/run_custom_predict.py --checkpoint output/checkpoints/distilbert_headtail_fold0.pth
 ```
 
 ## Features
 
-- State-of-the-art deep learning models for toxicity classification:
-  - LSTM-Capsule with EMA (Exponential Moving Average)
-  - BERT with head-tail architecture (processes first and last 128 tokens)
-  - GPT-2 with head-tail architecture
-- Advanced negative downsampling and weighted training
-- Pseudo-labeling for semi-supervised learning
-- Annotator count weighting to prioritize higher consensus examples
-- Comprehensive fairness evaluation framework
-- Interactive visualization dashboard for fairness metrics
-- Optimal model blending with Optuna
-
-## Project Structure
-
-```
-.
-├── configs/                 # Model configuration files
-├── data/                    # Dataset files (download from Kaggle)
-├── fairness/                # Fairness evaluation framework
-├── figs/                    # Output figures and visualizations
-├── legacy/                  # Legacy code (for reference)
-├── notebooks/               # Jupyter notebooks
-├── output/                  # Model outputs (checkpoints, predictions)
-│   └── preds/               # Model predictions
-├── results/                 # Evaluation results (metrics, reports)
-├── scripts/                 # Utility scripts
-│   └── write_metrics.py     # Generate fairness metrics
-├── src/                     # Source code
-│   ├── data/                # Data loading and processing
-│   ├── models/              # Model implementations
-│   │   ├── lstm_caps.py     # LSTM-Capsule model
-│   │   ├── bert_headtail.py # BERT head-tail model
-│   │   └── gpt2_headtail.py # GPT-2 head-tail model
-│   ├── train.py             # Training script
-│   ├── predict.py           # Prediction script
-│   └── blend_optuna.py      # Model blending optimization
-└── tests/                   # Unit tests
-```
-
-## Models
-
-The project implements three deep learning models:
-
-### 1. LSTM-Capsule
-
-- PyTorch implementation with nn.Embedding using GloVe embeddings
-- Bidirectional LSTM encoder
-- Primary Capsule layer with dimension=8
-- Self-attention mechanism
-- Exponential Moving Average (EMA) with decay=0.999
-
-### 2. BERT Head-Tail
-
-- Processes both the head (first 128 tokens) and tail (last 128 tokens) of the input
-- Concatenates the [CLS] representations from both head and tail
-- Uses HuggingFace Transformers library
-- Linear warmup and decay learning rate schedule
-
-### 3. GPT-2 Head-Tail
-
-- Similar architecture to BERT Head-Tail but using GPT-2 as the base model
-- Optimized for toxicity classification tasks
-
-## Handling Long Sequences
-
-Both BERT and GPT-2 models use a head-tail architecture to handle long sequences:
-- First 128 tokens capture the beginning context
-- Last 128 tokens capture the conclusion/resolution
-- Two separate encodings are processed and then combined
-- Helps capture context from both parts of long comments
-
-## Data Sampling Strategy
-
-The models use a sophisticated sampling strategy to address class imbalance:
-
-- **Epoch 1**: Drop 50% of rows where target < 0.2 AND identity_columns.sum() == 0
-- **Epoch 2+**: Restore half of the dropped examples
-
-## Sample Weighting
-
-Per-sample weights are calculated using:
-```
-w = 1
-w += 3 * identity_sum
-w += 8 * target
-w += 2 * log(toxicity_annotator_count + 2)  # Weights examples with higher annotator agreement
-w /= w.max()
-```
-
-This prioritizes:
-1. Examples with identity mentions
-2. Toxic examples
-3. Examples with higher annotator agreement (higher confidence label)
-4. While maintaining balanced training
-
-## Pseudo-Labeling
-
-The project implements a pseudo-labeling technique to leverage unlabeled data:
-
-1. Train a base model on the labeled dataset
-2. Use the base model to predict on unlabeled data (or training data for self-training)
-3. Keep only high-confidence predictions (above 0.9 or below 0.1)
-4. Add these examples with their predicted "pseudo-labels" to the training set
-5. Retrain the model on the combined dataset
-
-Benefits:
-- Increases effective training data size
-- Helps models learn from high-confidence examples
-- Improves generalization, especially for underrepresented classes
-
-The process can be repeated iteratively to further improve model performance, a common technique in semi-supervised learning.
-
-## Fairness Evaluation
-
-The project includes comprehensive fairness evaluation:
-
-- Subgroup AUC across demographic groups
-- BPSN (Background Positive, Subgroup Negative) AUC
-- BNSP (Background Negative, Subgroup Positive) AUC
-- Error rate metrics (FPR/FNR) at τ=0.5 threshold
-- Threshold gap visualization
-
-## Model Blending
-
-Optimal weights for model blending are found using Optuna:
-
-```bash
-python -m src.blend_optuna --ground_truth data/valid.csv
-```
-
-This optimizes for the fairness metric rather than just classification accuracy.
-
-## Continuous Integration
-
-GitHub Actions workflow tests:
-- Training (dry run with 5 mini-batches)
-- Unit tests
-- Figure generation
+- **State-of-the-art models**: LSTM-Capsule with EMA, BERT and GPT-2 with head-tail architecture
+- **Advanced training techniques**: Negative downsampling, weighted training, pseudo-labeling
+- **Comprehensive fairness evaluation**: Subgroup AUC, BPSN/BNSP metrics, threshold analysis
+- **Model explainability**: SHAP analysis and token attributions
+- **Optimized pipelines**: Fast turbo mode, large dataset handling, mixed-precision training
 
 ## License
 
@@ -224,4 +154,4 @@ MIT License
 
 - [Jigsaw Unintended Bias in Toxicity Classification](https://www.kaggle.com/c/jigsaw-unintended-bias-in-toxicity-classification)
 - [Perspective API](https://perspectiveapi.com/)
-- [Kaggle 3rd Place Solution](https://medium.com/@yanpanlau/jigsaw-unintended-bias-in-toxicity-classification-top-3-solution-a1309ff8fc53)
+- [SHAP: SHapley Additive exPlanations](https://github.com/slundberg/shap)
