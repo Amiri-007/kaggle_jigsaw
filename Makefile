@@ -106,4 +106,4 @@ turbo-run:  ## Ultra-fast mode: 5% subset, progress bars, ~5 min
 	make figures-fast 
 
 bias-aucs:  ## Calculate bias AUCs (AUC, BPSN AUC, BNSP AUC) for each identity subgroup
-	python scripts/bias_auc_metrics.py --validation-csv data/valid.csv --predictions-csv output/preds/simplest_preds.csv --model-name simplest_model
+	python scripts/bias_auc_metrics.py --validation-csv data/valid.csv --predictions-csv output/preds/simplest_preds.csv --model-name simplest_model --pred-column prediction

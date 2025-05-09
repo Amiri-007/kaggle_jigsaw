@@ -80,11 +80,13 @@ def main():
     ap.add_argument("--validation-csv", default="data/valid.csv", 
                    help="Validation dataset with identity and target columns")
     ap.add_argument("--predictions-csv", default="output/preds/bert_headtail.csv",
-                   help="Model predictions CSV file with 'pred' column")
+                   help="Model predictions CSV file with prediction column")
     ap.add_argument("--model-name", default="bert_headtail",
                    help="Name of the model for plot title")
     ap.add_argument("--out-dir", default="figs/bias_aucs",
                    help="Output directory for visualizations")
+    ap.add_argument("--pred-column", default="prediction",
+                   help="Name of the prediction column in predictions CSV")
     args = ap.parse_args()
 
     # Create output directory
@@ -96,15 +98,17 @@ def main():
     df_valid = pd.read_csv(args.validation_csv)
     df_preds = pd.read_csv(args.predictions_csv)
     
+    pred_col = args.pred_column
+    
     # Ensure predictions are in the same order as validation data
     if 'id' in df_valid.columns and 'id' in df_preds.columns:
         # If we have IDs, merge on them
-        df = df_valid.merge(df_preds[['id', 'pred']], on='id', how='inner')
+        df = df_valid.merge(df_preds[['id', pred_col]], on='id', how='inner')
         print(f"Merged {len(df)} rows using 'id' column")
     else:
         # Otherwise assume they're already aligned
         df = df_valid.copy()
-        df['pred'] = df_preds['pred'].values
+        df[pred_col] = df_preds[pred_col].values
         print(f"Aligned {len(df)} rows (no merge)")
     
     # Get identity columns
@@ -112,7 +116,7 @@ def main():
     
     # Compute bias metrics
     print("🔹 Computing bias metrics for each subgroup")
-    bias_metrics = compute_bias_metrics_for_model(df, identity_columns, 'target', 'pred')
+    bias_metrics = compute_bias_metrics_for_model(df, identity_columns, 'target', pred_col)
     
     # Create a dataframe for plotting
     plot_data = []
