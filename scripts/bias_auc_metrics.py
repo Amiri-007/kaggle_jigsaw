@@ -199,25 +199,39 @@ def main():
     print("\n===== BIAS METRICS SUMMARY =====")
     overall = bias_metrics['overall']
     print(f"Overall AUC: {overall['auc']:.4f}")
-    print(f"Worst Subgroup AUC: {overall['worst_auc']:.4f} ({overall['worst_auc_identity']})")
     
-    # Show min BPSN and BNSP metrics
-    min_bpsn = min([bias_metrics[sg]['bpsn_auc'] for sg in top_subgroups 
-                   if 'bpsn_auc' in bias_metrics[sg] and not np.isnan(bias_metrics[sg]['bpsn_auc'])])
-    min_bpsn_sg = [sg for sg in top_subgroups 
-                  if 'bpsn_auc' in bias_metrics[sg] and 
-                  not np.isnan(bias_metrics[sg]['bpsn_auc']) and 
-                  bias_metrics[sg]['bpsn_auc'] == min_bpsn][0]
+    if 'worst_auc' in overall and 'worst_auc_identity' in overall:
+        print(f"Worst Subgroup AUC: {overall['worst_auc']:.4f} ({overall['worst_auc_identity']})")
     
-    min_bnsp = min([bias_metrics[sg]['bnsp_auc'] for sg in top_subgroups 
-                   if 'bnsp_auc' in bias_metrics[sg] and not np.isnan(bias_metrics[sg]['bnsp_auc'])])
-    min_bnsp_sg = [sg for sg in top_subgroups 
-                  if 'bnsp_auc' in bias_metrics[sg] and 
-                  not np.isnan(bias_metrics[sg]['bnsp_auc']) and 
-                  bias_metrics[sg]['bnsp_auc'] == min_bnsp][0]
+    # Filter to only include subgroups that have valid metrics
+    valid_subgroups = [sg for sg in top_subgroups if sg in bias_metrics]
     
-    print(f"Worst BPSN AUC: {min_bpsn:.4f} ({min_bpsn_sg})")
-    print(f"Worst BNSP AUC: {min_bnsp:.4f} ({min_bnsp_sg})")
+    if valid_subgroups:
+        # Show min BPSN and BNSP metrics
+        valid_bpsn_values = [bias_metrics[sg]['bpsn_auc'] for sg in valid_subgroups 
+                           if 'bpsn_auc' in bias_metrics[sg] and 
+                           not np.isnan(bias_metrics[sg]['bpsn_auc'])]
+                           
+        if valid_bpsn_values:
+            min_bpsn = min(valid_bpsn_values)
+            min_bpsn_sg = [sg for sg in valid_subgroups 
+                         if 'bpsn_auc' in bias_metrics[sg] and 
+                         not np.isnan(bias_metrics[sg]['bpsn_auc']) and 
+                         bias_metrics[sg]['bpsn_auc'] == min_bpsn][0]
+            print(f"Worst BPSN AUC: {min_bpsn:.4f} ({min_bpsn_sg})")
+        
+        valid_bnsp_values = [bias_metrics[sg]['bnsp_auc'] for sg in valid_subgroups 
+                           if 'bnsp_auc' in bias_metrics[sg] and 
+                           not np.isnan(bias_metrics[sg]['bnsp_auc'])]
+                           
+        if valid_bnsp_values:
+            min_bnsp = min(valid_bnsp_values)
+            min_bnsp_sg = [sg for sg in valid_subgroups 
+                         if 'bnsp_auc' in bias_metrics[sg] and 
+                         not np.isnan(bias_metrics[sg]['bnsp_auc']) and 
+                         bias_metrics[sg]['bnsp_auc'] == min_bnsp][0]
+            print(f"Worst BNSP AUC: {min_bnsp:.4f} ({min_bnsp_sg})")
+    
     print("==============================")
 
 if __name__ == "__main__":
