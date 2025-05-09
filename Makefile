@@ -1,4 +1,4 @@
-.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev
+.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev eda
 
 help:
 	@echo "Available targets:"
@@ -38,6 +38,9 @@ figures:
 	jupyter nbconvert --execute notebooks/tmp_figs.ipynb --to html --output figs_run.html --ExecutePreprocessor.timeout=600
 
 figures-fast:
+eda:  ## run exploratory-data-analysis plots
+	python scripts/eda_identity.py --csv data/train.csv
+
 	@if [ -d "results" ]; then \
 		jupytext --to notebook notebooks/04_generate_figures.py -o notebooks/tmp_figs.ipynb; \
 		jupyter nbconvert --execute notebooks/tmp_figs.ipynb --to html --output figs_run.html --ExecutePreprocessor.timeout=60 --ExecutePreprocessor.kernel_name=python3; \
