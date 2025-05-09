@@ -457,6 +457,10 @@ def validate(
             else:
                 raise ValueError(f"Unsupported model type: {model_type}")
             
+            # Ensure target has the same shape as logits
+            if logits.shape != targets.shape:
+                targets = targets.view(-1, 1) if logits.shape[1] == 1 else targets.view(-1)
+            
             # Calculate loss
             loss = loss_fn(logits, targets)
             
@@ -466,8 +470,8 @@ def validate(
             # Track metrics
             total_loss += loss.item() * len(targets)
             total_examples += len(targets)
-            all_predictions.extend(probs.cpu().numpy().tolist())
-            all_targets.extend(targets.cpu().numpy().tolist())
+            all_predictions.extend(probs.cpu().numpy().flatten().tolist())
+            all_targets.extend(targets.cpu().numpy().flatten().tolist())
             
             # Update progress bar
             pbar.set_postfix({'loss': loss.item(), 'avg_loss': total_loss / total_examples})
