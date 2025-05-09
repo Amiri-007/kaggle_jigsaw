@@ -212,8 +212,8 @@ def main():
         subgroup_cm_plot(mask_sg, sg)
         # BPSN / BNPS AUCs
         from fairness.metrics_v2 import bpsn_auc, bnsp_auc
-        bpsn_vals[sg] = bpsn_auc(df, sg, "prediction", "target")
-        bnsp_vals[sg] = bnsp_auc(df, sg, "prediction", "target")
+        bpsn_vals[sg] = bpsn_auc(df["y_true"].values, df["prediction"].values, mask_sg)
+        bnsp_vals[sg] = bnsp_auc(df["y_true"].values, df["prediction"].values, mask_sg)
 
     # bar-plots
     for name, d in [("bpsn", bpsn_vals), ("bnsp", bnsp_vals)]:

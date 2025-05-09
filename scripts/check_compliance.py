@@ -101,6 +101,6 @@ report_md = []
 report_md.append(header("Compliance Report"))
 report_md.append("")
 report_md.append(tabulate(rows, headers=["Item", "Done (✔/✘)"], tablefmt="github"))
-OUT.write_text("\n".join(report_md))
+OUT.write_text("\n".join(report_md), encoding="utf-8")
 print("\n".join(report_md))
 print(f"\n✅  Written to {OUT}") 
