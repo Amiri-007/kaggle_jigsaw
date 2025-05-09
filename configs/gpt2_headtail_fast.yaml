@@ -1,0 +1,9 @@
+model_name: gpt2
+max_len: 192
+max_head_len: 96
+batch_size: 16
+epochs: 1
+fp16: true
+data_dir: "data"
+train_file: "train.csv"
+valid_file: "valid.csv" 

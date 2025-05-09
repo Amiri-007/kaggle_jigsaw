@@ -1,0 +1,8 @@
+max_len: 192
+batch_size: 768
+epochs: 3
+max_features: 100000
+device: cuda
+data_dir: "data"
+train_file: "train.csv"
+valid_file: "valid.csv" 
