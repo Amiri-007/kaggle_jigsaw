@@ -272,6 +272,7 @@ MIT License
 ## References
 
 - [Jigsaw Unintended Bias in Toxicity Classification](https://www.kaggle.com/c/jigsaw-unintended-bias-in-toxicity-classification)
+- [Kaggle 3rd Place Solution](https://www.kaggle.com/competitions/jigsaw-unintended-bias-in-toxicity-classification/discussion/97471)
 - [Perspective API](https://perspectiveapi.com/)
 - [Fairness Definitions Explained](https://fairware.cs.umass.edu/papers/Verma.pdf)
 - [Fairness and Machine Learning](https://fairmlbook.org/)
