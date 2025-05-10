@@ -13,6 +13,7 @@ Online toxicity detection models can inadvertently behave unfairly toward certai
 The goal is to identify bias in the model’s behavior and suggest ways to mitigate such unintended biases. This repository is structured to allow anyone (or graders) to **reproduce our results and figures** and inspect the code for each component of the analysis.
 
 ## Repository Structure
+The codebase has been reorganized for better clarity and maintainability. See [DIRECTORY_STRUCTURE.md](DIRECTORY_STRUCTURE.md) for the complete organization.
 
 ```bash
 ├── model_impl/              # Implementation of models and training pipeline (formerly "src/")
