@@ -133,7 +133,11 @@ The project implements a "turbo mode" for rapid development and testing, which u
 
 ```bash
 # Run the full turbo pipeline
-.\pipelines\run_turbo.ps1  # Windows PowerShell
+# Linux/macOS:
+make turbo-run
+
+# Windows (PowerShell):
+.\pipelines\run_turbo.ps1
 ```
 
 ### Turbo Pipeline Steps
@@ -236,6 +240,21 @@ We've implemented multiple approaches for model interpretability:
    python explainability/run_turbo_shap.py --ckpt output/checkpoints/distilbert_headtail_fold0.pth
    ```
 
+3. **SHarP Analysis with Cross-Platform Compatibility**: Enhanced SHAP-based fairness analysis with robust model checkpoint loading
+   ```bash
+   # Run with standard parameters
+   python fairness_analysis/run_sharp_analysis.py --sample 2000
+   
+   # Run with custom model path and sample size
+   python fairness_analysis/run_sharp_analysis.py --model-path output/checkpoints/your_model.pth --sample-size 1000
+   ```
+   
+   The SHarP analysis script features enhanced model checkpoint loading that:
+   - Supports multiple checkpoint formats (models saved from different training pipelines)
+   - Handles distributed training checkpoints (with 'module.' prefix)
+   - Provides detailed error diagnostics and fallback loading strategies
+   - Works across both Windows and Linux/macOS environments
+
 These explainers generate visualizations including:
 - Token importance charts
 - Waterfall plots showing token contributions
@@ -277,6 +296,10 @@ For running on larger datasets:
 
 ```bash
 # Run the large dataset pipeline (8% vs 5% in original turbo mode)
+# Linux/macOS:
+make full-run
+
+# Windows (PowerShell):
 .\pipelines\run_turbo_large.ps1
 ```
 
@@ -308,4 +331,41 @@ MIT License
 - [Fairness Definitions Explained](https://fairware.cs.umass.edu/papers/Verma.pdf)
 - [Fairness and Machine Learning](https://fairmlbook.org/)
 - [SHAP: SHapley Additive exPlanations](https://github.com/slundberg/shap)
+
+## SHarP Analysis: Cross-Platform Compatibility
+
+The SHarP (SHAP-based Fairness) analysis tools have been enhanced to work seamlessly across different platforms (Windows/Linux/macOS) with various model checkpoint formats. These improvements provide:
+
+1. **Robust Model Loading**: The model loading function can now handle various checkpoint formats and state dictionary structures.
+   - Works with both DistilBERT and BERT-based models
+   - Handles checkpoints from distributed training with module prefix
+   - Automatically applies fallback loading with strict=False when needed
+
+2. **Test Scripts**: Verify model loading and SHarP analysis functionality:
+   ```powershell
+   # Windows
+   .\test_sharp_loading.ps1
+   ```
+   ```bash
+   # Linux/macOS
+   python scripts/test_sharp_loading.py --model-path output/checkpoints/distilbert_headtail_fold0.pth
+   ```
+
+3. **Simplified Testing Mode**: When running with small samples (--sample-size < 10), a simplified simulation mode is used to generate representative visualizations even when data is limited.
+
+4. **Better Error Handling**: All functions have improved error recovery and diagnostic messages for troubleshooting model compatibility issues.
+
+The improved SHarP analysis script can be run directly with:
+
+```powershell
+# Windows
+python fairness_analysis/run_sharp_analysis.py --sample-size 500
+```
+
+```bash
+# Linux/macOS
+python fairness_analysis/run_sharp_analysis.py --sample-size 500
+```
+
+This will generate model explanation visualizations and fairness divergence metrics that measure how differently the model "reasons" for different demographic groups.
 ``` 
