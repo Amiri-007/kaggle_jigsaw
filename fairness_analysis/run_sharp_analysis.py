@@ -294,16 +294,36 @@ def main():
         "--sample", type=int, default=500, help="Number of examples to analyze"
     )
     parser.add_argument(
+        "--sample-size", type=int, default=1000,
+        help="Number of rows to sample from merged_val.csv for SHAP"
+    )
+    parser.add_argument(
         "--max-length", type=int, default=128, help="Maximum sequence length"
     )
     parser.add_argument("--gpu", action="store_true", help="Use GPU if available")
     args = parser.parse_args()
 
+    # ensure csv exists
+    merg = Path("output/data/merged_val.csv")
+    if not merg.exists():
+        raise FileNotFoundError("Run `make merge-preds` first – merged_val.csv missing")
+
+    # guarantee output dirs
+    OUT_FIGS = Path("figs/shap")
+    OUT_FIGS.mkdir(parents=True, exist_ok=True)
+    OUT_CSV = Path("results")
+    OUT_CSV.mkdir(parents=True, exist_ok=True)
+
+    bar_path = OUT_FIGS / "shap_bar_distilbert_dev.png"
+    div_path = OUT_FIGS / "sharp_divergence_distilbert.png"
+    csv_path = OUT_CSV / "sharp_scores_distilbert_dev.csv"
+
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
 
     # Load data
-    df = load_data(args.data, args.sample)
+    df = pd.read_csv(merg)
+    df = df.sample(n=args.sample_size, random_state=42)
 
     # Load model and tokenizer
     model, config = load_model(args.model_path)
@@ -332,7 +352,14 @@ def main():
             group_sizes[column] = size
 
     # Plot and save divergence scores
-    results_df = plot_divergence_scores(divergence_scores, group_sizes, args.output_dir)
+    results_df = plot_divergence_scores(divergence_scores, group_sizes, OUT_FIGS)
+    
+    # Also save to CSV output
+    results_df.to_csv(csv_path, index=False)
+    print(f"Saved divergence scores to {csv_path}")
+
+    # Plot and save divergence scores in the original output dir
+    plot_divergence_scores(divergence_scores, group_sizes, args.output_dir)
 
     # Print summary
     print("\nSHarP Analysis Results:")
@@ -347,7 +374,7 @@ def main():
     print(
         "(via feature attributions) for each demographic group compared to the overall population."
     )
-    print(f"Results saved to {args.output_dir}")
+    print(f"Results saved to {args.output_dir} and {OUT_FIGS}")
 
 
 if __name__ == "__main__":
