@@ -1,4 +1,4 @@
-.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev eda bias-aucs count-people audit audit-v2 competition-score check
+.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev eda bias-aucs count-people audit audit-v2 competition-score check sharp-fast sharp-ci
 
 help:
 	@echo "Available targets:"
@@ -23,6 +23,8 @@ help:
 	@echo "  full-run    - Run a full end-to-end run"
 	@echo "  dev-run     - 10% subset, 1 epoch each, ~12 min"
 	@echo "  turbo-run   - 5% subset with progress bars, ~5 min"
+	@echo "  sharp-fast  - Run individual fairness analysis in fast mode"
+	@echo "  sharp-ci    - Run CI smoke test for individual fairness analysis"
 
 setup:
 	pip install -r requirements.txt
@@ -144,3 +146,9 @@ competition-score: ## Calculate official Kaggle competition score
 
 check: ## Run compliance checker
 	python scripts/check_compliance.py
+
+sharp-fast:
+	@python scripts/run_individual_fairness.py --sample 2000
+
+sharp-ci:
+	@python scripts/run_individual_fairness.py --sample 200 --no-save-shap
