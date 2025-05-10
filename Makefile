@@ -1,4 +1,45 @@
-.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev eda bias-aucs count-people audit audit-v2 competition-score check sharp-fast sharp-ci data
+.PHONY: rc-data rc-train rc-shap rc-merge-preds rc-clean rc-all train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev eda bias-aucs count-people audit audit-v2 competition-score check sharp-fast sharp-ci data
+
+### Reproducible Course Pipeline ###
+RC_ENV   = .venv
+RC_PY    = $(RC_ENV)/bin/python
+RC_PIP   = $(RC_ENV)/bin/pip
+
+$(RC_ENV): requirements.lock
+	python -m venv $(RC_ENV); \
+	$(RC_PIP) install --upgrade pip; \
+	$(RC_PIP) install -r requirements.lock
+
+rc-data: | $(RC_ENV)
+	@mkdir -p data
+	@if [ ! -f data/train.csv ]; then \
+		$(RC_PY) -m kaggle competitions download -c jigsaw-unintended-bias-in-toxicity-classification \
+		    -p data --quiet; \
+		$(RC_PY) -m pip install unzip; \
+		unzip -oq data/jigsaw-unintended-bias-in-toxicity-classification.zip -d data; \
+	fi
+
+rc-train: rc-data
+	@mkdir -p output/checkpoints output/preds
+	$(RC_PY) -m src.train --model bert_headtail --config configs/bert_headtail_turbo.yaml --fp16 \
+		--save-path output/checkpoints/distilbert.pth
+
+rc-merge-preds: rc-train
+	@mkdir -p output/data
+	$(RC_PY) scripts/merge_preds_with_labels.py \
+		--preds output/preds/simplest_preds.csv \
+		--labels data/valid.csv \
+		--out output/data/merged_val.csv
+
+rc-shap: rc-merge-preds
+	@mkdir -p figs/shap results
+	$(RC_PY) fairness_analysis/run_sharp_analysis.py --sample-size 1000
+
+rc-clean:
+	rm -rf $(RC_ENV)
+	rm -rf output/data/merged_val.csv
+
+rc-all: rc-shap
 
 help:
 	@echo "Available targets:"

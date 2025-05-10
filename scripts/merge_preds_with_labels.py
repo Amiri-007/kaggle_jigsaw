@@ -1,103 +1,77 @@
 #!/usr/bin/env python
 """
-Merge prediction files with ground truth and identity columns
-Usage:
-    python scripts/merge_preds_with_labels.py \
-           --preds output/preds/distilbert_dev.csv \
-           --labels data/valid.csv \
-           --out output/data/merged_val.csv
+Merge predictions with labels for fairness analysis.
+This script joins model predictions with the validation data containing identity labels,
+which is needed for demographic group analysis.
 """
 import argparse
 import pandas as pd
 import os
+from pathlib import Path
 
-def merge_predictions_with_labels(preds_file, labels_file, output_file):
+def merge_preds_with_labels(preds_path, labels_path, output_path):
     """
-    Merge predictions CSV with ground truth labels and identity columns
+    Merge predictions with labels from the validation set.
     
     Args:
-        preds_file: Path to predictions CSV (must have "id" and "prediction" columns)
-        labels_file: Path to labels CSV (must have "id", "target", and identity columns)
-        output_file: Path to save merged data
+        preds_path: Path to predictions CSV with 'id' and 'prediction' columns
+        labels_path: Path to validation CSV with 'id', 'target', and identity columns
+        output_path: Path to save the merged CSV
     """
-    print(f"Loading predictions from {preds_file}...")
+    print(f"Loading predictions from {preds_path}")
+    preds_df = pd.read_csv(preds_path)
     
-    # Handle different prediction file formats
-    try:
-        preds_df = pd.read_csv(preds_file)
-        
-        # Check if we have id and prediction columns
-        if "id" not in preds_df.columns:
-            # Try to use the first column as id
-            preds_df = pd.read_csv(preds_file, index_col=0)
-            preds_df.reset_index(inplace=True)
-            preds_df.rename(columns={"index": "id"}, inplace=True)
-            
-        # If we don't have a prediction column, use the first column that's not id
-        if "prediction" not in preds_df.columns:
-            non_id_cols = [col for col in preds_df.columns if col != "id"]
-            if non_id_cols:
-                preds_df.rename(columns={non_id_cols[0]: "prediction"}, inplace=True)
-            else:
-                raise ValueError("No prediction column found in predictions file")
-    except Exception as e:
-        # If the file has a simple format, try to load it directly
-        print(f"Error loading predictions: {e}")
-        print("Trying alternative format...")
-        preds_df = pd.read_csv(preds_file, header=None, names=["id", "prediction"])
+    print(f"Loading validation data from {labels_path}")
+    labels_df = pd.read_csv(labels_path)
     
-    print(f"Loaded {len(preds_df)} predictions")
+    # Check for required columns
+    if 'id' not in preds_df.columns or 'prediction' not in preds_df.columns:
+        raise ValueError("Predictions CSV must have 'id' and 'prediction' columns")
     
-    print(f"Loading labels from {labels_file}...")
-    # Load labels
-    labels_df = pd.read_csv(labels_file)
-    print(f"Loaded {len(labels_df)} labeled examples")
+    if 'id' not in labels_df.columns or 'target' not in labels_df.columns:
+        raise ValueError("Labels CSV must have 'id' and 'target' columns")
     
-    # Get identity columns
-    identity_cols = [col for col in labels_df.columns if col in [
-        "male", "female", "transgender", "heterosexual", "homosexual_gay_or_lesbian", 
-        "bisexual", "christian", "jewish", "muslim", "hindu", "buddhist", "atheist",
-        "black", "white", "asian", "latino", "other_race_or_ethnicity",
-        "physical_disability", "intellectual_or_learning_disability", 
-        "psychiatric_or_mental_illness", "other_disability"
-    ]]
+    # Merge on id
+    print("Merging datasets...")
+    merged_df = pd.merge(preds_df, labels_df, on='id', how='inner')
     
-    if not identity_cols:
-        print("WARNING: No identity columns found in labels file")
-    else:
-        print(f"Found {len(identity_cols)} identity columns")
+    # Check if we have any rows
+    if len(merged_df) == 0:
+        raise ValueError("No matching IDs found between predictions and labels")
     
-    # Columns to keep from labels
-    keep_cols = ["id", "comment_text", "target"] + identity_cols
-    
-    # Merge predictions with labels
-    print("Merging predictions with labels...")
-    merged_df = pd.merge(
-        preds_df[["id", "prediction"]], 
-        labels_df[keep_cols],
-        on="id",
-        how="inner"
-    )
-    
-    print(f"Merged dataset has {len(merged_df)} rows and {len(merged_df.columns)} columns")
+    print(f"Successfully merged {len(merged_df)} rows")
     
     # Create output directory if it doesn't exist
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
-    # Save to CSV
-    merged_df.to_csv(output_file, index=False)
-    print(f"Merged data saved to {output_file}")
+    # Save merged dataset
+    merged_df.to_csv(output_path, index=False)
+    print(f"Saved merged dataset to {output_path}")
     
     return merged_df
 
 def main():
-    parser = argparse.ArgumentParser(description="Merge predictions with labels and identity columns")
+    parser = argparse.ArgumentParser(description="Merge predictions with validation data for fairness analysis")
     parser.add_argument("--preds", required=True, help="Path to predictions CSV")
-    parser.add_argument("--labels", required=True, help="Path to labels CSV with identity columns")
-    parser.add_argument("--out", required=True, help="Path to save merged data")
+    parser.add_argument("--labels", required=True, help="Path to validation CSV with labels")
+    parser.add_argument("--out", required=True, help="Path to save merged CSV")
     
     args = parser.parse_args()
-    merge_predictions_with_labels(args.preds, args.labels, args.out)
+    
+    # Convert to Path objects
+    preds_path = Path(args.preds)
+    labels_path = Path(args.labels)
+    output_path = Path(args.out)
+    
+    # Check if files exist
+    if not preds_path.exists():
+        raise FileNotFoundError(f"Predictions file not found: {preds_path}")
+    
+    if not labels_path.exists():
+        raise FileNotFoundError(f"Labels file not found: {labels_path}")
+    
+    # Merge datasets
+    merge_preds_with_labels(preds_path, labels_path, output_path)
 
 if __name__ == "__main__":
     main() 

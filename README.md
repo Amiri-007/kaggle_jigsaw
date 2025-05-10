@@ -94,7 +94,34 @@ make data
 > • Go to **My Account → Create New API Token** to download `kaggle.json`.
 > • When the script prompts, paste the file's **whole contents** and press <kbd>Ctrl-D</kbd> (Linux/macOS) or <kbd>Ctrl-Z</kbd> then <kbd>Enter</kbd> (Windows Powershell).
 
-### 2. Train / reproduce results
+### 2. Reproducible Pipeline
+
+```bash
+# 1. clone & create virtual-env
+git clone https://github.com/Amiri-007/kaggle_jigsaw.git
+cd kaggle_jigsaw
+make ENV=.venv           # creates venv & installs pinned deps
+
+# 2. place Kaggle API token
+mkdir -p ~/.kaggle && cp path/to/kaggle.json ~/.kaggle && chmod 600 ~/.kaggle/kaggle.json
+
+# 3. full pipeline: data → train → fairness + SHAP
+make rc-all
+
+# artifacts:
+#   figs/      ← publication-quality plots used in report
+#   results/   ← CSVs with AUROCs, SHAPr divergence, etc.
+```
+
+| Path | Purpose |
+|------|---------|
+| `src/train.py` | Train DistilBERT classifier (turbo config) |
+| `scripts/merge_preds_with_labels.py` | Join model predictions with identity labels for audit |
+| `fairness_analysis/run_sharp_analysis.py` | Compute SHAP values & SHAPr divergence plots |
+| `fairness_analysis/metrics.py` | Core fairness metrics (Subgroup/BPSN/BNSP AUC etc.) |
+| `Makefile` | One-command pipeline (`make rc-all`) |
+
+### 3. Train / reproduce results
 
 ```bash
 make full-run FP16=1         # see configs/*.yaml for knobs
