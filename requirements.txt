@@ -15,8 +15,9 @@ nbconvert
 statsmodels
 pyyaml
 jupyter
-shap
+shap==0.43.0
 lime
 streamlit>=1.30.0
 altair>=5.0.0
-fairlearn>=0.8.0 
+fairlearn>=0.8.0
+kaggle>=1.6.0 

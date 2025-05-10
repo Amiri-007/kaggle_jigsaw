@@ -10,6 +10,9 @@ import torch
 import matplotlib.pyplot as plt
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from tqdm import tqdm
+import sys
+sys.path.append(".")
+from fairness_analysis.metrics_v2 import list_identity_columns
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {DEVICE}")

@@ -76,6 +76,10 @@ python -m venv .venv && source .venv/bin/activate  # For Linux/Mac
 pip install -r requirements.txt
 ```
 
+**Note:** The pipeline pulls the dataset via the Kaggle CLI.  
+If you have never used it, run `pip install kaggle && kaggle config set -n path -v ~/.kaggle`
+and place your `kaggle.json` API token in that folder.
+
 ## Quick Start
 
 ### 1. Grab the Civil-Comments dataset (one-time)

@@ -12,7 +12,7 @@ from optuna.samplers import TPESampler
 
 # Try to import fairness metrics from the RDS repository
 try:
-    from fairness.metrics_v2 import final_score, BiasReport
+    from fairness_analysis.metrics_v2 import final_score, BiasReport
 except ImportError:
     # Fallback to metrics module if metrics_v2 is not available
     try:

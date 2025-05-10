@@ -10,6 +10,8 @@ from transformers import DistilBertForSequenceClassification, DistilBertTokenize
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
+from fairness_analysis import BiasReport, final_score
+from src.data.utils import list_identity_columns
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
