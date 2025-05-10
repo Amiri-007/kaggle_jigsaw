@@ -26,6 +26,8 @@ The codebase has been reorganized for better clarity and maintainability. See [D
 │   ├── run_simplified_explainer.py  # Token attribution analysis
 │   ├── run_turbo_shap.py    # SHAP analysis for turbo model
 │   └── run_turbo_shap_simple.py     # Simplified token importance analysis
+├── scripts/                 # Utility scripts
+│   └── run_individual_fairness.py   # SHarP individual fairness analysis
 ├── predictions/             # Custom prediction scripts
 │   ├── run_custom_predict.py        # Prediction script
 │   └── large_predict.py             # Prediction for larger datasets
@@ -131,7 +133,23 @@ We've implemented multiple approaches for model interpretability:
    python explainers/run_turbo_shap.py --ckpt output/checkpoints/distilbert_headtail_fold0.pth
    ```
 
-3. **Other SHAP Approaches**: Additional implementation details
+3. **SHarP Individual Fairness Analysis**: Analyzes differences in feature attributions across demographic groups
+   ```bash
+   # Using the Makefile target
+   make sharp-fast
+   
+   # Or directly with Python
+   python scripts/run_individual_fairness.py --sample 2000
+   ```
+   
+   This analysis:
+   - Computes SHAP values for a sample of validation data
+   - Compares attribution patterns between demographic subgroups and the global population
+   - Generates divergence scores and visualizations showing which groups have the most different attribution patterns
+   - Helps identify potential fairness issues at the individual feature level
+   - Outputs to `output/explainers/` directory
+
+4. **Other SHAP Approaches**: Additional implementation details
    ```bash
    python explainers/run_simplified_explainer.py --ckpt output/checkpoints/distilbert_headtail_fold0.pth
    python explainers/generate_mock_shap.py --model_path output/checkpoints/distilbert_headtail_fold0.pth
@@ -141,6 +159,7 @@ These explainers generate visualizations including:
 - Token importance charts
 - Waterfall plots showing token contributions
 - Heatmaps of token influence
+- SHarP divergence bar charts for demographic groups
 
 ## Large Dataset Pipeline
 
@@ -164,6 +183,7 @@ python predictions/run_custom_predict.py --checkpoint output/checkpoints/distilb
 - **Advanced training techniques**: Negative downsampling, weighted training, pseudo-labeling
 - **Comprehensive fairness evaluation**: Subgroup AUC, BPSN/BNSP metrics, threshold analysis
 - **Model explainability**: SHAP analysis and token attributions
+- **Individual fairness analysis**: SHarP divergence metrics across demographic groups
 - **Optimized pipelines**: Fast turbo mode, large dataset handling, mixed-precision training
 
 ## License
