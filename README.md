@@ -55,6 +55,26 @@ python -m venv .venv && source .venv/bin/activate  # For Linux/Mac
 pip install -r requirements.txt
 ```
 
+## Quick Start
+
+### 1. Grab the Civil-Comments dataset (one-time)
+
+```bash
+# generates ~/.kaggle/kaggle.json the first time you run it
+make data
+```
+
+> **Heads-up ⚠️**
+> You need a free Kaggle account.
+> • Go to **My Account → Create New API Token** to download `kaggle.json`.
+> • When the script prompts, paste the file's **whole contents** and press <kbd>Ctrl-D</kbd> (Linux/macOS) or <kbd>Ctrl-Z</kbd> then <kbd>Enter</kbd> (Windows Powershell).
+
+### 2. Train / reproduce results
+
+```bash
+make full-run FP16=1         # see configs/*.yaml for knobs
+```
+
 ## Quick Start: Turbo Mode
 
 The project implements a "turbo mode" for rapid development and testing, which uses smaller models and data samples:

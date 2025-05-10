@@ -1,7 +1,8 @@
-.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev eda bias-aucs count-people audit audit-v2 competition-score check sharp-fast sharp-ci
+.PHONY: train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev eda bias-aucs count-people audit audit-v2 competition-score check sharp-fast sharp-ci data
 
 help:
 	@echo "Available targets:"
+	@echo "  data        - Download the Kaggle Civil Comments dataset (uses get_data.sh or get_data.ps1 for Windows)"
 	@echo "  setup       - Install dependencies"
 	@echo "  train       - Train a model"
 	@echo "  train-dry   - Run training in dry-run mode"
@@ -152,3 +153,6 @@ sharp-fast:
 
 sharp-ci:
 	@python scripts/run_individual_fairness.py --sample 200 --no-save-shap
+
+data:
+	@if [ -f get_data.sh ]; then ./get_data.sh; else powershell -ExecutionPolicy Bypass -File ./get_data.ps1; fi
