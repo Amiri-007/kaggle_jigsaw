@@ -59,6 +59,8 @@ The codebase has been reorganized for better clarity and maintainability. See [D
     ├── scripts/             # Utility scripts
     └── misc/                # Miscellaneous utilities
 ```
+## To run the main notebook download the following file and the kaggle all_data file (see description below)
+- [simplest_preds.csv](https://drive.google.com/file/d/1f-4iuqBLSEl3gSZrPsqv1m3jFKT8DEzx/view?usp=sharing)
 
 ## Installation
 
