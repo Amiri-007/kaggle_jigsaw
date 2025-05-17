@@ -1,5 +1,5 @@
 # core
-torch==2.2.0      # CUDA 11.8 wheels exist on PyPI
+torch==2.7.0      # CUDA 11.8 wheels exist on PyPI
 transformers==4.37.2
 datasets==2.17.1
 scikit-learn==1.4.2
