@@ -213,6 +213,17 @@ The fairness analysis tools provide comprehensive fairness evaluation and auditi
    - Computes divergence scores showing which groups have the most different attribution patterns
    - Visualizes the results and generates detailed reports
 
+4. **Identity Prevalence Comparison**: Compare toxicity prevalence across different identity groups
+   ```bash
+   python fairness_analysis/compare_identity_prevalence.py
+   ```
+   
+   The identity prevalence comparison:
+   - Computes toxicity prevalence for specific identity subgroups
+   - Calculates risk ratios relative to background prevalence
+   - Visualizes comparative prevalence with confidence intervals
+   - Generates metrics and summary reports for inclusion in analysis
+
 ## Model Explainability
 
 We've implemented multiple approaches for model interpretability:
