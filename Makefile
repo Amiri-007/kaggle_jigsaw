@@ -1,4 +1,4 @@
-.PHONY: rc-data rc-train rc-shap rc-merge-preds rc-clean rc-all train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev eda bias-aucs count-people audit audit-v2 competition-score check sharp-fast sharp-ci data
+.PHONY: rc-data rc-train rc-shap rc-merge-preds rc-clean rc-all train predict figures figures-fast help blend test clean setup full-run dev-run turbo-run explainers-fast explainers-dev eda bias-aucs count-people audit audit-v2 competition-score check sharp-fast sharp-ci identity-compare data
 
 ### Reproducible Course Pipeline ###
 RC_ENV   = .venv
@@ -67,6 +67,8 @@ help:
 	@echo "  turbo-run   - 5% subset with progress bars, ~5 min"
 	@echo "  sharp-fast  - Run individual fairness analysis in fast mode"
 	@echo "  sharp-ci    - Run CI smoke test for individual fairness analysis"
+	@echo "  identity-compare - Compare toxicity prevalence for jewish vs muslim identities"
+	@echo "  test-sharp-loading - Test model checkpoint loading for SHarP analysis"
 
 setup:
 	pip install -r requirements.txt
@@ -99,7 +101,7 @@ audit: ## Run accuracy + fairness audit (conf-matrix, AUCs, disparities)
 		--thr   0.5
 
 audit-v2: ## selection-rate, demographic-parity, FPR/FNR disparity
-	python scripts/audit_fairness_v2.py \
+	python fairness_analysis/audit_fairness_v2.py \
 		--preds results/preds_distilbert_dev.csv \
 		--val   data/train.csv \
 		--thr   0.5 \
@@ -113,8 +115,8 @@ audit-v2: ## selection-rate, demographic-parity, FPR/FNR disparity
 		exit 1; \
 	fi
 
-explainers-fast:
-	python scripts/run_explainers_shap.py --sample 2000
+explainers-fast: ## Run SHAP analysis (replaced by run_sharp_analysis.py)
+	python fairness_analysis/run_sharp_analysis.py --sample 2000
 
 explainers-dev:   ## SHAP+SHARP on dev DistilBERT checkpoint (2 k rows)
 	python scripts/explainers_distilbert.py \
@@ -189,11 +191,17 @@ competition-score: ## Calculate official Kaggle competition score
 check: ## Run compliance checker
 	python scripts/check_compliance.py
 
-sharp-fast:
-	@python scripts/run_individual_fairness.py --sample 2000
+sharp-fast:   ## quick SHAP / SHarP run on small sample
+	@python fairness_analysis/run_sharp_analysis.py --sample 300
 
-sharp-ci:
-	@python scripts/run_individual_fairness.py --sample 200 --no-save-shap
+sharp-ci:   ## CI smoke test for SHarP analysis
+	@python fairness_analysis/run_sharp_analysis.py --sample 200 --no-save-shap
+
+identity-compare:  ## Compare toxicity prevalence for jewish vs muslim identities
+	python fairness_analysis/compare_identity_prevalence.py
+
+test-sharp-loading:  ## Test model checkpoint loading for SHarP analysis
+	python scripts/test_sharp_loading.py --model-path output/checkpoints/distilbert_headtail_fold0.pth
 
 data:
 	@if [ -f get_data.sh ]; then ./get_data.sh; else powershell -ExecutionPolicy Bypass -File ./get_data.ps1; fi
