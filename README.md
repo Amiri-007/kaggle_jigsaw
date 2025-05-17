@@ -129,7 +129,7 @@ make rc-all
 make full-run FP16=1         # see configs/*.yaml for knobs
 ```
 
-## Turbo Mode: Quick Testing (Graders of RDS Project - use this version)
+## Turbo Mode: Quick Testing
 
 The project implements a "turbo mode" for rapid development and testing, which uses smaller models and data samples:
 
