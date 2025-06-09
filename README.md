@@ -378,7 +378,6 @@ python fairness_analysis/run_sharp_analysis.py --sample-size 500
 ```bash
 # Linux/macOS
 python fairness_analysis/run_sharp_analysis.py --sample-size 500
-```
 
 This will generate model explanation visualizations and fairness divergence metrics that measure how differently the model "reasons" for different demographic groups.
 ``` 
